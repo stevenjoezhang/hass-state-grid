@@ -1,0 +1,15 @@
+{
+  "domain": "state_grid",
+  "name": "国家电网",
+  "codeowners": ["@stevenjoezhang"],
+  "config_flow": true,
+  "documentation": "https://github.com/stevenjoezhang/hass-state-grid",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/stevenjoezhang/hass-state-grid/issues",
+  "requirements": [
+    "gmssl==3.2.2",
+    "cryptography>=42.0.0"
+  ],
+  "version": "0.2.0"
+}

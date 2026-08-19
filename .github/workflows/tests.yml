@@ -1,0 +1,25 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v6
+      - name: Run tests
+        run: >-
+          uv run --python 3.13 --with pytest --with gmssl==3.2.2
+          --with cryptography --with aiohttp pytest -q
+      - name: Run Ruff
+        run: uv run --with ruff ruff check custom_components/state_grid tests

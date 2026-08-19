@@ -1,0 +1,61 @@
+{
+  "title": "State Grid",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Sign in to State Grid",
+        "description": "Uses the Android App API directly without a browser, Android, or Frida. The integration generates a stable local device identity and sends a login SMS.",
+        "data": {
+          "username": "Phone number",
+          "province": "Province code (optional)",
+          "city": "City code (optional)",
+          "region": "Region code (optional)"
+        }
+      },
+      "sms_login": {
+        "title": "SMS login",
+        "description": "A login code was sent to the phone ending in {phone_suffix}.",
+        "data": {"verification_code": "6-digit SMS code"}
+      },
+      "reauth_confirm": {
+        "title": "Sign in again",
+        "description": "The login Token expired. Continue to send a new SMS code while retaining the generated device identity.",
+        "data": {
+          "send_sms": "Send login SMS"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to the State Grid App gateway",
+      "invalid_auth": "The SMS login was rejected",
+      "invalid_verification_code": "The SMS code is invalid or expired",
+      "unknown": "State Grid returned an unknown error"
+    },
+    "abort": {
+      "already_configured": "This State Grid account is already configured",
+      "wrong_account": "The signed-in account does not match this entry"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "State Grid query settings",
+        "data": {
+          "history_months": "History months (1-3)",
+          "update_interval_hours": "Update interval (6-24 hours)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "latest_daily_usage": {"name": "Latest daily usage"},
+      "current_month_usage": {"name": "Current month usage"},
+      "current_month_valley": {"name": "Current month valley usage"},
+      "current_month_flat": {"name": "Current month flat usage"},
+      "current_month_peak": {"name": "Current month peak usage"},
+      "current_month_tip": {"name": "Current month tip usage"},
+      "latest_daily_charge": {"name": "Latest daily charge"}
+    }
+  }
+}

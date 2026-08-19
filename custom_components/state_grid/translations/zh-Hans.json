@@ -1,0 +1,61 @@
+{
+  "title": "国家电网",
+  "config": {
+    "step": {
+      "user": {
+        "title": "登录国家电网",
+        "description": "直接调用 Android App API，不使用网页、Android 或 Frida。集成会在本机生成稳定设备身份并发送登录短信。区域代码可留空。",
+        "data": {
+          "username": "手机号",
+          "province": "省代码（可选）",
+          "city": "市代码（可选）",
+          "region": "区县代码（可选）"
+        }
+      },
+      "sms_login": {
+        "title": "短信登录",
+        "description": "登录验证码已发送到尾号 {phone_suffix} 的手机号。",
+        "data": {"verification_code": "6 位短信验证码"}
+      },
+      "reauth_confirm": {
+        "title": "重新登录国家电网",
+        "description": "登录 Token 已失效。点击继续发送短信验证码，设备身份仍沿用原来的本机生成值。",
+        "data": {
+          "send_sms": "发送登录短信"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "无法连接国家电网网关",
+      "invalid_auth": "短信登录被服务端拒绝",
+      "invalid_verification_code": "短信验证码无效或已过期",
+      "unknown": "国家电网返回了未识别的错误"
+    },
+    "abort": {
+      "already_configured": "该国家电网账户已配置",
+      "wrong_account": "重新登录得到的账户与原配置不一致"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "国家电网查询设置",
+        "data": {
+          "history_months": "查询最近几个月（1-3）",
+          "update_interval_hours": "更新间隔（6-24 小时）"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "latest_daily_usage": {"name": "最近一日电量"},
+      "current_month_usage": {"name": "本月用电量"},
+      "current_month_valley": {"name": "本月谷电量"},
+      "current_month_flat": {"name": "本月平电量"},
+      "current_month_peak": {"name": "本月峰电量"},
+      "current_month_tip": {"name": "本月尖电量"},
+      "latest_daily_charge": {"name": "最近一日电费"}
+    }
+  }
+}
