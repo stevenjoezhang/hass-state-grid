@@ -35,7 +35,6 @@ SENSORS = (
         translation_key="latest_daily_usage",
         device_class=SensorDeviceClass.ENERGY,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda usage: usage.latest.usage if usage.latest else None,
     ),
     StateGridSensorDescription(
@@ -87,7 +86,6 @@ SENSORS = (
         translation_key="latest_daily_charge",
         device_class=SensorDeviceClass.MONETARY,
         native_unit_of_measurement="CNY",
-        state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda usage: usage.latest.charge if usage.latest else None,
     ),
 )

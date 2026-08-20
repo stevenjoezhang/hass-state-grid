@@ -1,0 +1,31 @@
+"""Tests for Home Assistant sensor metadata compatibility."""
+
+from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
+
+from custom_components.state_grid.sensor import SENSORS
+
+
+def test_historical_daily_sensors_do_not_claim_live_statistics() -> None:
+    descriptions = {description.key: description for description in SENSORS}
+
+    daily_usage = descriptions["latest_daily_usage"]
+    assert daily_usage.device_class is SensorDeviceClass.ENERGY
+    assert daily_usage.state_class is None
+
+    daily_charge = descriptions["latest_daily_charge"]
+    assert daily_charge.device_class is SensorDeviceClass.MONETARY
+    assert daily_charge.state_class is None
+
+
+def test_current_month_energy_sensors_remain_totals() -> None:
+    descriptions = {description.key: description for description in SENSORS}
+
+    for key in (
+        "current_month_usage",
+        "current_month_valley",
+        "current_month_flat",
+        "current_month_peak",
+        "current_month_tip",
+    ):
+        assert descriptions[key].device_class is SensorDeviceClass.ENERGY
+        assert descriptions[key].state_class is SensorStateClass.TOTAL
