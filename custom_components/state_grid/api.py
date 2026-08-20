@@ -38,6 +38,7 @@ SMS_LOGIN_PATH = "emss-uia-center-front/member/c2/f02"
 DAILY_USAGE_PATH = "emss-bia-bill-front/member/c11/f01"
 AUTH_ERROR_CODES = {"-200", "-201"}
 DEVICE_VERIFICATION_CODE = "4006"
+INTERACTIVE_CHALLENGE_CODES = {"RK008"}
 CHINA_TZ = ZoneInfo("Asia/Shanghai")
 
 
@@ -52,12 +53,11 @@ class StateGridNetworkError(StateGridError):
 class StateGridApiError(StateGridError):
     """The service rejected a request."""
 
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(self, code: str, message: str, *, source: str = "service") -> None:
         self.code = code
         self.message = message
-        super().__init__(
-            f"State Grid API rejected the request: {code} {message}".strip()
-        )
+        self.source = source
+        super().__init__(f"State Grid API {source} error: {code} {message}".strip())
 
 
 class StateGridAuthenticationError(StateGridApiError):
@@ -66,6 +66,10 @@ class StateGridAuthenticationError(StateGridApiError):
 
 class StateGridDeviceVerificationRequired(StateGridAuthenticationError):
     """A password login requires one-time new-device SMS verification."""
+
+
+class StateGridInteractiveChallengeRequired(StateGridAuthenticationError):
+    """The server requires a browser or App-based interactive challenge."""
 
 
 def _app_guid_new() -> str:
@@ -329,15 +333,20 @@ class StateGridAppApi:
         top_code = str(response.get("code", ""))
         srv_code, message, data = _srvrt(response)
         code = srv_code or top_code
+        source = "srvrt" if srv_code else "gateway"
         if code == DEVICE_VERIFICATION_CODE:
-            raise StateGridDeviceVerificationRequired(code, message)
+            raise StateGridDeviceVerificationRequired(code, message, source=source)
+        if code in INTERACTIVE_CHALLENGE_CODES:
+            raise StateGridInteractiveChallengeRequired(code, message, source=source)
         if code in AUTH_ERROR_CODES:
-            raise StateGridAuthenticationError(code, message)
+            raise StateGridAuthenticationError(code, message, source=source)
         if srv_code and srv_code != "0000":
-            raise StateGridApiError(srv_code, message)
+            raise StateGridApiError(srv_code, message, source="srvrt")
         if top_code not in {"", "0", "1"}:
             raise StateGridApiError(
-                top_code, message or str(response.get("message", ""))
+                top_code,
+                message or str(response.get("message", "")),
+                source="gateway",
             )
         return data
 
@@ -369,10 +378,15 @@ class StateGridAppApi:
             )
             try:
                 data = self._raise_for_error(response)
-            except StateGridDeviceVerificationRequired:
+            except (
+                StateGridDeviceVerificationRequired,
+                StateGridInteractiveChallengeRequired,
+            ):
                 raise
             except StateGridApiError as error:
-                raise StateGridAuthenticationError(error.code, error.message) from error
+                raise StateGridAuthenticationError(
+                    error.code, error.message, source=error.source
+                ) from error
             bizrt = data.get("bizrt")
             if not isinstance(bizrt, Mapping) or not bizrt.get("token"):
                 raise StateGridAuthenticationError(
@@ -438,7 +452,9 @@ class StateGridAppApi:
         code_key = str(bizrt.get("codeKey", "")) if isinstance(bizrt, Mapping) else ""
         if not code_key:
             raise StateGridApiError(
-                "missing_code_key", "SMS response did not contain codeKey"
+                "missing_code_key",
+                "SMS response did not contain codeKey",
+                source="srvrt",
             )
         return code_key
 
@@ -455,7 +471,9 @@ class StateGridAppApi:
         try:
             data = self._raise_for_error(response)
         except StateGridApiError as error:
-            raise StateGridAuthenticationError(error.code, error.message) from error
+            raise StateGridAuthenticationError(
+                error.code, error.message, source=error.source
+            ) from error
         bizrt = data.get("bizrt")
         if not isinstance(bizrt, Mapping) or not bizrt.get("token"):
             raise StateGridAuthenticationError(
@@ -475,7 +493,9 @@ class StateGridAppApi:
         code_key = str(bizrt.get("codeKey", "")) if isinstance(bizrt, Mapping) else ""
         if not code_key:
             raise StateGridApiError(
-                "missing_code_key", "SMS response did not contain codeKey"
+                "missing_code_key",
+                "SMS response did not contain codeKey",
+                source="srvrt",
             )
         return code_key
 
@@ -484,7 +504,7 @@ class StateGridAppApi:
             return self.login_session
         if not self.password:
             raise StateGridAuthenticationError(
-                "sms_reauth_required", "SMS reauthentication is required"
+                "saved_password_required", "a saved password is required"
             )
         return await self.async_login()
 
@@ -516,6 +536,7 @@ class StateGridAppApi:
             raise StateGridApiError(
                 return_code,
                 str(data.get("returnMsg") or "daily usage query failed"),
+                source="business",
             )
         raw_readings = data.get("sevenEleList")
         readings: list[DailyReading] = []

@@ -5,6 +5,7 @@ import pytest
 from custom_components.state_grid.api import (
     StateGridAppApi,
     StateGridDeviceVerificationRequired,
+    StateGridInteractiveChallengeRequired,
     build_daily_usage_payload,
 )
 from custom_components.state_grid.models import AccountUsage, DailyReading, PowerAccount
@@ -61,7 +62,7 @@ def test_daily_reading_and_month_aggregation() -> None:
 
 
 def test_4006_is_device_verification_not_bad_password() -> None:
-    with pytest.raises(StateGridDeviceVerificationRequired):
+    with pytest.raises(StateGridDeviceVerificationRequired) as caught:
         StateGridAppApi._raise_for_error(
             {
                 "code": 1,
@@ -73,3 +74,24 @@ def test_4006_is_device_verification_not_bad_password() -> None:
                 },
             }
         )
+    assert caught.value.source == "srvrt"
+    assert caught.value.code == "4006"
+    assert caught.value.message == "new device verification required"
+
+
+def test_rk008_is_interactive_challenge_not_bad_password() -> None:
+    with pytest.raises(StateGridInteractiveChallengeRequired) as caught:
+        StateGridAppApi._raise_for_error(
+            {
+                "code": 1,
+                "data": {
+                    "srvrt": {
+                        "resultCode": "RK008",
+                        "resultMessage": "interactive challenge required",
+                    }
+                },
+            }
+        )
+    assert caught.value.source == "srvrt"
+    assert caught.value.code == "RK008"
+    assert caught.value.message == "interactive challenge required"

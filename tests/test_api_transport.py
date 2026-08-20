@@ -264,3 +264,162 @@ def test_pure_sms_login_flow() -> None:
     assert login_plain["quInfo"]["code"] == "123456"
     assert login_plain["quInfo"]["codeKey"] == "sms-code-key"
     assert http.requests[1]["url"].endswith("/member/c2/f02")
+
+
+def test_expired_token_is_renewed_with_saved_password() -> None:
+    login_response = _response_envelope(
+        {
+            "code": 1,
+            "data": {
+                "srvrt": {"resultCode": "0000", "resultMessage": "ok"},
+                "bizrt": {
+                    "token": "n" * 36,
+                    "tokenExpireTime": 1296000,
+                    "userInfo": {"userId": "u" * 32, "powerUserList": []},
+                },
+            },
+        }
+    )
+    http = FakeHttp(login_response)
+    expired = LoginSession(
+        token="x" * 36,
+        user_id="u" * 32,
+        expires_at=0,
+        user_info={},
+    )
+    api = StateGridAppApi(
+        http,
+        username="11111111111",
+        password="saved-password",
+        profile=_profile(),
+        login_session=expired,
+    )
+
+    session = asyncio.run(api.async_ensure_login())
+
+    assert session.token == "n" * 36
+    assert len(http.requests) == 1
+    assert http.requests[0]["url"].endswith("/member/c2/f01")
+
+
+def test_password_login_retries_with_device_verification_code() -> None:
+    login_response = _response_envelope(
+        {
+            "code": 1,
+            "data": {
+                "srvrt": {"resultCode": "0000", "resultMessage": "ok"},
+                "bizrt": {
+                    "token": "v" * 36,
+                    "tokenExpireTime": 1296000,
+                    "userInfo": {"userId": "u" * 32, "powerUserList": []},
+                },
+            },
+        }
+    )
+    http = FakeHttp(login_response)
+    api = StateGridAppApi(
+        http,
+        username="11111111111",
+        password="saved-password",
+        profile=_profile(),
+    )
+
+    session = asyncio.run(
+        api.async_login(
+            verification_code="123456",
+            code_key="device-code-key",
+        )
+    )
+
+    assert session.token == "v" * 36
+    plaintext = _decrypt_request(http.requests[0]["data"])
+    assert plaintext["quInfo"]["code"] == "123456"
+    assert plaintext["quInfo"]["codeKey"] == "device-code-key"
+    assert plaintext["quInfo"]["password"] != "saved-password"
+
+
+def test_expired_token_without_saved_password_requires_reauthentication() -> None:
+    api = StateGridAppApi(
+        FakeHttp(),
+        username="11111111111",
+        password="",
+        profile=_profile(),
+        login_session=LoginSession(
+            token="x" * 36,
+            user_id="u" * 32,
+            expires_at=0,
+            user_info={},
+        ),
+    )
+
+    with pytest.raises(StateGridAuthenticationError, match="saved password"):
+        asyncio.run(api.async_ensure_login())
+
+
+def test_query_auth_failure_relogs_with_password_and_retries() -> None:
+    expired_response = _response_envelope(
+        {
+            "code": 1,
+            "data": {"srvrt": {"resultCode": "-200", "resultMessage": "expired"}},
+        }
+    )
+    login_response = _response_envelope(
+        {
+            "code": 1,
+            "data": {
+                "srvrt": {"resultCode": "0000", "resultMessage": "ok"},
+                "bizrt": {
+                    "token": "r" * 36,
+                    "tokenExpireTime": 1296000,
+                    "userInfo": {"userId": "u" * 32, "powerUserList": []},
+                },
+            },
+        }
+    )
+    daily_response = _response_envelope(
+        {
+            "code": 1,
+            "data": {
+                "returnCode": "1",
+                "totalPq": "1.25",
+                "sevenEleList": [{"day": "20260801", "dayElePq": "1.25"}],
+            },
+        }
+    )
+    http = FakeHttp(expired_response, login_response, daily_response)
+    api = StateGridAppApi(
+        http,
+        username="11111111111",
+        password="saved-password",
+        profile=_profile(),
+        login_session=LoginSession(
+            token="x" * 36,
+            user_id="u" * 32,
+            expires_at=9999999999,
+            user_info={},
+        ),
+    )
+    account = PowerAccount.from_api(
+        {
+            "id": "account-1",
+            "powerUserNo": "cons-no",
+            "powerUserNo_dst": "cons-no-dst",
+            "proNo": "42101",
+            "orgNo": "org",
+            "elecType": "01",
+        }
+    )
+
+    readings, total = asyncio.run(
+        api.async_query_daily_usage(account, date(2026, 8, 1), date(2026, 8, 31))
+    )
+
+    assert total == 1.25
+    assert [reading.usage for reading in readings] == [1.25]
+    assert api.login_session is not None
+    assert api.login_session.token == "r" * 36
+    assert [request["url"].split("/")[-2:] for request in http.requests] == [
+        ["c11", "f01"],
+        ["c2", "f01"],
+        ["c11", "f01"],
+    ]

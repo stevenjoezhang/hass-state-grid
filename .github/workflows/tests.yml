@@ -20,6 +20,6 @@ jobs:
       - name: Run tests
         run: >-
           uv run --python 3.13 --with pytest --with gmssl==3.2.2
-          --with cryptography --with aiohttp pytest -q
+          --with cryptography --with aiohttp --with homeassistant==2026.2.3 pytest -q
       - name: Run Ruff
         run: uv run --with ruff ruff check custom_components/state_grid tests

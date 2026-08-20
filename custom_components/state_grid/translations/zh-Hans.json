@@ -4,32 +4,41 @@
     "step": {
       "user": {
         "title": "登录国家电网",
-        "description": "直接调用 Android App API，不使用网页、Android 或 Frida。集成会在本机生成稳定设备身份并发送登录短信。区域代码可留空。",
+        "description": "请输入网上国网账号和密码。集成优先使用密码登录，只有服务端要求新设备认证时才发送短信验证码。",
         "data": {
           "username": "手机号",
-          "province": "省代码（可选）",
-          "city": "市代码（可选）",
-          "region": "区县代码（可选）"
+          "password": "密码"
         }
       },
-      "sms_login": {
-        "title": "短信登录",
-        "description": "登录验证码已发送到尾号 {phone_suffix} 的手机号。",
+      "device_verification": {
+        "title": "新设备安全验证",
+        "description": "服务端要求验证新设备，验证码已发送到尾号 {phone_suffix} 的手机号。",
         "data": {"verification_code": "6 位短信验证码"}
       },
       "reauth_confirm": {
-        "title": "重新登录国家电网",
-        "description": "登录 Token 已失效。点击继续发送短信验证码，设备身份仍沿用原来的本机生成值。",
+        "title": "完成安全验证",
+        "description": "自动密码登录需要额外认证。继续后将再次尝试密码登录；仅当服务端要求时才发送短信。",
         "data": {
-          "send_sms": "发送登录短信"
+          "continue": "继续"
+        }
+      },
+      "reauth_credentials": {
+        "title": "更新登录密码",
+        "description": "保存的密码已失效，请输入当前网上国网密码。",
+        "data": {
+          "password": "密码"
         }
       }
     },
     "error": {
-      "cannot_connect": "无法连接国家电网网关",
-      "invalid_auth": "短信登录被服务端拒绝",
-      "invalid_verification_code": "短信验证码无效或已过期",
-      "unknown": "国家电网返回了未识别的错误"
+      "cannot_connect": "无法连接国家电网网关（{error_code}）：{error_message}",
+      "invalid_auth": "登录失败（{error_code}）：{error_message}",
+      "cannot_send_verification_code": "无法发送新设备验证码（{error_code}）：{error_message}",
+      "interactive_challenge_unsupported": "服务端要求当前集成无法完成的交互式验证（{error_code}）：{error_message}",
+      "invalid_verification_code": "设备验证码验证失败（{error_code}）：{error_message}",
+      "server_error": "国家电网上游返回错误 [{error_source}] {error_code}：{error_message}",
+      "local_error": "本地请求构造失败（{error_type}）：{error_message}",
+      "unknown": "未预期错误（{error_type}）：{error_message}"
     },
     "abort": {
       "already_configured": "该国家电网账户已配置",

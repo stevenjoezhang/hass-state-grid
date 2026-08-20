@@ -17,6 +17,7 @@ from .api import (
     StateGridAppApi,
     StateGridAuthenticationError,
     StateGridDeviceVerificationRequired,
+    StateGridInteractiveChallengeRequired,
     StateGridNetworkError,
 )
 from .const import (
@@ -59,6 +60,8 @@ class StateGridDataCoordinator(DataUpdateCoordinator[dict[str, AccountUsage]]):
             result = await self.api.async_query_history(months=months)
         except StateGridDeviceVerificationRequired as error:
             raise ConfigEntryAuthFailed("device_verification_required") from error
+        except StateGridInteractiveChallengeRequired as error:
+            raise ConfigEntryAuthFailed("interactive_challenge_required") from error
         except StateGridAuthenticationError as error:
             raise ConfigEntryAuthFailed("invalid_auth") from error
         except (StateGridNetworkError, StateGridApiError) as error:

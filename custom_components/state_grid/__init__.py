@@ -5,6 +5,7 @@ from __future__ import annotations
 from functools import partial
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -23,13 +24,7 @@ from .synthetic_device import build_device_profile
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up one 国家电网 account."""
     profile, updated_state = await hass.async_add_executor_job(
-        partial(
-            build_device_profile,
-            entry.data[CONF_SYNTHETIC_DEVICE],
-            province=str(entry.data.get("province", "")),
-            city=str(entry.data.get("city", "")),
-            region=str(entry.data.get("region", "")),
-        )
+        partial(build_device_profile, entry.data[CONF_SYNTHETIC_DEVICE])
     )
     if updated_state != entry.data[CONF_SYNTHETIC_DEVICE]:
         hass.config_entries.async_update_entry(
@@ -38,8 +33,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
     api = StateGridAppApi(
         async_get_clientsession(hass),
-        username=entry.data["username"],
-        password="",
+        username=entry.data[CONF_USERNAME],
+        password=str(entry.data.get(CONF_PASSWORD, "")),
         profile=profile,
         login_session=LoginSession.from_dict(entry.data.get(CONF_LOGIN_SESSION)),
     )
@@ -52,6 +47,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         remove_update_listener=remove_update_listener,
     )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    return True
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate passwordless beta entries to the password-first schema."""
+    if entry.version > 3:
+        return False
+    if entry.version < 3:
+        data = dict(entry.data)
+        for legacy_key in ("province", "city", "region"):
+            data.pop(legacy_key, None)
+        hass.config_entries.async_update_entry(entry, data=data, version=3)
     return True
 
 

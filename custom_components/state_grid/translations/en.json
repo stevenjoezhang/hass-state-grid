@@ -4,32 +4,41 @@
     "step": {
       "user": {
         "title": "Sign in to State Grid",
-        "description": "Uses the Android App API directly without a browser, Android, or Frida. The integration generates a stable local device identity and sends a login SMS.",
+        "description": "Enter the Online State Grid username and password. Password login is used by default; an SMS is sent only when the server requires new-device verification.",
         "data": {
           "username": "Phone number",
-          "province": "Province code (optional)",
-          "city": "City code (optional)",
-          "region": "Region code (optional)"
+          "password": "Password"
         }
       },
-      "sms_login": {
-        "title": "SMS login",
-        "description": "A login code was sent to the phone ending in {phone_suffix}.",
+      "device_verification": {
+        "title": "New-device verification",
+        "description": "The server requires new-device verification. A code was sent to the phone ending in {phone_suffix}.",
         "data": {"verification_code": "6-digit SMS code"}
       },
       "reauth_confirm": {
-        "title": "Sign in again",
-        "description": "The login Token expired. Continue to send a new SMS code while retaining the generated device identity.",
+        "title": "Complete security verification",
+        "description": "Automatic password login needs additional authentication. Continue to retry; an SMS is sent only when requested by the server.",
         "data": {
-          "send_sms": "Send login SMS"
+          "continue": "Continue"
+        }
+      },
+      "reauth_credentials": {
+        "title": "Update password",
+        "description": "The saved password is no longer accepted. Enter the current Online State Grid password.",
+        "data": {
+          "password": "Password"
         }
       }
     },
     "error": {
-      "cannot_connect": "Cannot connect to the State Grid App gateway",
-      "invalid_auth": "The SMS login was rejected",
-      "invalid_verification_code": "The SMS code is invalid or expired",
-      "unknown": "State Grid returned an unknown error"
+      "cannot_connect": "Cannot connect to the State Grid gateway ({error_code}): {error_message}",
+      "invalid_auth": "Login failed ({error_code}): {error_message}",
+      "cannot_send_verification_code": "Unable to send the new-device verification code ({error_code}): {error_message}",
+      "interactive_challenge_unsupported": "The server requires an unsupported interactive challenge ({error_code}): {error_message}",
+      "invalid_verification_code": "Device verification failed ({error_code}): {error_message}",
+      "server_error": "State Grid upstream error [{error_source}] {error_code}: {error_message}",
+      "local_error": "Local request construction failed ({error_type}): {error_message}",
+      "unknown": "Unexpected error ({error_type}): {error_message}"
     },
     "abort": {
       "already_configured": "This State Grid account is already configured",
