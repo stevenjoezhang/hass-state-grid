@@ -6,7 +6,8 @@
 直接调用网上国网 Android App API，不启动网页、浏览器、Android、ADB 或 Frida。
 
 集成在 Home Assistant 主机上生成稳定设备身份和腾讯 TuringFD V90 `deviceTokenTX`，通过 App
-原生短信登录获得约 15 天有效的 Token，再查询绑定户号的历史每日用电量。
+原生密码登录获得约 15 天有效的 Token，再查询绑定户号的历史每日用电量。
+只有服务端要求新设备安全验证时才会发送短信。
 
 ## 已验证能力
 
@@ -14,13 +15,14 @@
 - 纯 Python 等价实现 Turing ARM64 feature hash，不携带或执行 APK native 库；
 - JCE/Tars m90、zlib、XXTEA、RSA-2048 mode-1 `v3:` Token；
 - App SM2/SM3/SM4 请求及响应信封；
-- `c1/f01` 发送 `businessType=login` 短信；
-- `c2/f02` 短信登录；
+- `c2/f01` 密码登录；
+- `c1/f01` 按需发送 `businessType=logindevice` 新设备验证短信；
+- `c2/f01` 携带 `code/codeKey` 完成新设备密码登录；
 - 登录响应中的 Token、用户和多户号解析；
 - `c11/f01` 查询本月及历史月份每日用电量；
-- Token 失效时由 HA 发起短信重认证。
+- Token 失效时自动使用已保存密码重新登录。
 
-生产接口实测结果：
+历史协议实测已确认短信验证和 Token 响应的基本形状：
 
 ```text
 发送短信：srvrt.resultCode = 0000
@@ -32,17 +34,32 @@ tokenExpireTime：1296000（约 15 天）
 
 真实凭据、验证码、`codeKey`、Token 和完整 `deviceTokenTX` 均未写入测试日志。
 
-## 为什么使用短信登录
+## 认证策略
 
-同一个纯 Python 设备的密码登录会返回：
+首次配置只要求输入手机号和密码。登录 Token 过期后，集成会在后台自动使用
+已保存的密码登录；只有服务端返回 `4006` 新设备验证时，Home Assistant 才提示
+用户输入短信验证码。
+
+需要注意，某些账号或风控状态下，密码登录会返回：
 
 ```text
 RK008 网络连接超时
 ```
 
-APK 代码证明 `RK008` 是类型 `777` 的复杂滑块风险码。新设备短信验证成功后，密码登录仍会
-触发该滑块；而 App 原生短信登录 `c2/f02` 已实测成功。因此集成以短信登录为可靠入口，不依赖
-浏览器验证码，也不保存账户密码。
+APK 代码证明 `RK008` 是类型 `777` 的复杂滑块风险码，不是可以用六位短信码
+完成的 `4006` 新设备验证。本集成不绕过滑块；如果服务端强制滑块，密码登录将失败。
+
+## 错误诊断
+
+配置流会显示完整、不截断的上游错误来源、错误码和消息，例如：
+
+```text
+国家电网上游返回错误 [srvrt] RK008：网络连接超时(RK008),请重试!
+```
+
+已知错误码仍使用本地语义分类，但会同时保留服务端的原始 message。HA 日志只记录
+错误来源、code、异常类型和 message，不记录密码、验证码、请求体、登录 Token 或
+`deviceTokenTX`。
 
 ## 安装
 
@@ -62,16 +79,17 @@ APK 代码证明 `RK008` 是类型 `777` 的复杂滑块风险码。新设备短
 
 ## 配置流程
 
-1. 输入网上国网手机号。
-2. 可选填写六位省、市、区县代码；留空也可发送登录短信。
-3. 集成首次创建 256-bit 随机 seed 并存入 HA config entry。
-4. seed 派生稳定的品牌、型号、Android ID、OAID、MAC 和 `AppGuid`。
-5. Python 生成并按官方逻辑缓存 `deviceTokenTX` 四小时。
-6. 服务端发送 6 位登录验证码。
-7. 输入验证码后调用 `c2/f02`，保存登录 Token 和必要户号字段。
+1. 输入网上国网手机号和密码。
+2. 集成首次创建 256-bit 随机 seed 并存入 HA config entry。
+3. seed 派生稳定的品牌、型号、Android ID、OAID、MAC 和 `AppGuid`。
+4. Python 生成并按官方逻辑缓存 `deviceTokenTX` 四小时。
+5. 调用 `c2/f01` 密码登录。
+6. 如果服务端要求 `4006` 新设备验证，发送 `logindevice` 短信并显示验证码表单。
+7. 保存用户名、密码、登录 Token 和必要户号字段。
 
-短信验证码和 `codeKey` 只保存在配置流内存中，成功或流结束后即丢弃。登录 Token、profile seed
-和最小化后的户号字段按 HA 标准保存在 `.storage/core.config_entries`，请保护配置目录和备份。
+短信验证码和 `codeKey` 只保存在配置流内存中，成功或流结束后即丢弃。用户名、密码、
+登录 Token、profile seed 和最小化后的户号字段保存在 `.storage/core.config_entries`。
+Home Assistant 的 config entry 不对密码做额外加密，请严格保护配置目录和备份。
 
 ## 查询和实体
 
@@ -86,15 +104,17 @@ APK 代码证明 `RK008` 是类型 `777` 的复杂滑块风险码。新设备短
 
 “最近一日电量”的 `daily_history` 属性包含合并后的每日记录。服务端缺失值保留为 `unknown`，
 不会错误地填成零。
+最近一日电量和电费是已完成的历史日聚合值，因此不设置 `state_class`；本月累计电量
+传感器保持 `state_class=total`。
 
 ## Token 与重认证
 
 登录 Token 约 15 天，没有独立 Refresh Token。集成行为：
 
 1. Token 有效时直接查询；
-2. 查询返回 `-200/-201` 或本地到期时触发 HA 重认证；
-3. 用户点击发送短信并输入验证码；
-4. 沿用原 profile seed 和设备身份获取新 Token。
+2. 查询返回 `-200/-201` 或本地到期时，自动使用已保存的用户名和密码登录；
+3. 密码登录成功时直接保存新 Token，不提醒用户；
+4. 只有服务端要求 `4006` 新设备验证时，才由 HA 发起重认证并输入短信码。
 
 整个生命周期不需要官方 App 或 Frida。
 
@@ -113,7 +133,7 @@ RSA DER modulus 是 `00 || 256-byte modulus`。跳过符号前导 `00` 后，mod
 
 ```bash
 uv run --python 3.13 --with pytest --with gmssl==3.2.2 \
-  --with cryptography --with aiohttp pytest -q
+  --with cryptography --with aiohttp --with homeassistant==2026.2.3 pytest -q
 
 uv run --python 3.13 --with ruff ruff check custom_components/state_grid
 ```
