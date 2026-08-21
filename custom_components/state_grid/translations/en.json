@@ -59,6 +59,10 @@
   "entity": {
     "sensor": {
       "latest_daily_usage": {"name": "Latest daily usage"},
+      "latest_daily_valley": {"name": "Latest daily valley usage"},
+      "latest_daily_flat": {"name": "Latest daily flat usage"},
+      "latest_daily_peak": {"name": "Latest daily peak usage"},
+      "latest_daily_tip": {"name": "Latest daily tip usage"},
       "current_month_usage": {"name": "Current month usage"},
       "current_month_valley": {"name": "Current month valley usage"},
       "current_month_flat": {"name": "Current month flat usage"},

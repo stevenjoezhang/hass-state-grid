@@ -60,7 +60,11 @@
   },
   "entity": {
     "sensor": {
-      "latest_daily_usage": {"name": "最近一日电量"},
+      "latest_daily_usage": {"name": "最新日用电量"},
+      "latest_daily_valley": {"name": "最新日谷电量"},
+      "latest_daily_flat": {"name": "最新日平电量"},
+      "latest_daily_peak": {"name": "最新日峰电量"},
+      "latest_daily_tip": {"name": "最新日尖电量"},
       "current_month_usage": {"name": "本月用电量"},
       "current_month_valley": {"name": "本月谷电量"},
       "current_month_flat": {"name": "本月平电量"},

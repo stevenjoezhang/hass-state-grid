@@ -12,6 +12,15 @@ def test_historical_daily_sensors_do_not_claim_live_statistics() -> None:
     assert daily_usage.device_class is SensorDeviceClass.ENERGY
     assert daily_usage.state_class is None
 
+    for key in (
+        "latest_daily_valley",
+        "latest_daily_flat",
+        "latest_daily_peak",
+        "latest_daily_tip",
+    ):
+        assert descriptions[key].device_class is SensorDeviceClass.ENERGY
+        assert descriptions[key].state_class is None
+
     daily_charge = descriptions["latest_daily_charge"]
     assert daily_charge.device_class is SensorDeviceClass.MONETARY
     assert daily_charge.state_class is None

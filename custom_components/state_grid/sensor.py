@@ -38,6 +38,34 @@ SENSORS = (
         value_fn=lambda usage: usage.latest.usage if usage.latest else None,
     ),
     StateGridSensorDescription(
+        key="latest_daily_valley",
+        translation_key="latest_daily_valley",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        value_fn=lambda usage: usage.latest.valley if usage.latest else None,
+    ),
+    StateGridSensorDescription(
+        key="latest_daily_flat",
+        translation_key="latest_daily_flat",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        value_fn=lambda usage: usage.latest.flat if usage.latest else None,
+    ),
+    StateGridSensorDescription(
+        key="latest_daily_peak",
+        translation_key="latest_daily_peak",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        value_fn=lambda usage: usage.latest.peak if usage.latest else None,
+    ),
+    StateGridSensorDescription(
+        key="latest_daily_tip",
+        translation_key="latest_daily_tip",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        value_fn=lambda usage: usage.latest.tip if usage.latest else None,
+    ),
+    StateGridSensorDescription(
         key="current_month_usage",
         translation_key="current_month_usage",
         device_class=SensorDeviceClass.ENERGY,
@@ -187,10 +215,11 @@ class StateGridElectricitySensor(
             "account_suffix": account.cons_no_src[-4:],
             "address": account.address,
         }
-        if self.entity_description.key == "latest_daily_usage":
+        if self.entity_description.key.startswith("latest_daily_"):
             attributes["latest_date"] = (
                 self.usage.latest.day.isoformat() if self.usage.latest else None
             )
+        if self.entity_description.key == "latest_daily_usage":
             attributes["daily_history"] = [
                 reading.as_dict() for reading in self.usage.readings
             ]
