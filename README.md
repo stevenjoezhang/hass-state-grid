@@ -1,161 +1,192 @@
 # 国家电网 Home Assistant 集成
 
-这是一个非官方 Home Assistant 自定义集成，与国家电网有限公司无隶属或授权
-关系。它依赖未公开的 App 协议，服务端或 App 升级可能随时导致集成失效。
+将“网上国网”账户中的历史用电量接入 Home Assistant。
 
-直接调用网上国网 Android App API，不启动网页、浏览器、Android、ADB 或 Frida。
+完成一次配置后，集成会定时更新绑定户号的每日用电量、本月累计电量和峰谷平尖电量；登录
+Token 失效时会自动使用已保存的密码重新登录。日常运行不需要浏览器、官方 App 或 Android
+设备。
 
-集成在 Home Assistant 主机上生成稳定设备身份和腾讯 TuringFD V90 `deviceTokenTX`，通过 App
-原生密码登录获得约 15 天有效的 Token，再查询绑定户号的历史每日用电量。
-只有服务端要求新设备安全验证时才会发送短信。
+> [!IMPORTANT]
+> 这是社区维护的非官方集成，与国家电网有限公司没有隶属或授权关系。它依赖网上国网 App 的
+> 非公开接口，服务端升级后可能暂时失效。请勿用于计费、结算或其他需要法律效力的场景。
 
-## 已验证能力
+[![打开 Home Assistant 并添加集成](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=state_grid)
 
-- 纯 Python 创建长期稳定、不同安装不冲突的设备 profile；
-- 纯 Python 等价实现 Turing ARM64 feature hash，不携带或执行 APK native 库；
-- JCE/Tars m90、zlib、XXTEA、RSA-2048 mode-1 `v3:` Token；
-- App SM2/SM3/SM4 请求及响应信封；
-- `c2/f01` 密码登录；
-- `c1/f01` 按需发送 `businessType=logindevice` 新设备验证短信；
-- `c2/f01` 携带 `code/codeKey` 完成新设备密码登录；
-- 登录响应中的 Token、用户和多户号解析；
-- `c11/f01` 查询本月及历史月份每日用电量；
-- Token 失效时自动使用已保存密码重新登录。
+## 功能
 
-历史协议实测已确认短信验证和 Token 响应的基本形状：
+- 使用网上国网手机号和密码登录；
+- 服务端要求新设备验证时，按提示输入短信验证码；
+- 支持一个账户下的多个用电户号；
+- 查询最近 1–3 个自然月的每日用电量；
+- 提供本月总电量和峰、谷、平、尖分时电量；
+- 默认每 12 小时更新，可配置为 6–24 小时；
+- 登录 Token 过期后自动重新登录。
 
-```text
-发送短信：srvrt.resultCode = 0000
-短信登录：srvrt.resultCode = 0000
-登录消息：验证码登录成功
-Token：存在
-tokenExpireTime：1296000（约 15 天）
-```
-
-真实凭据、验证码、`codeKey`、Token 和完整 `deviceTokenTX` 均未写入测试日志。
-
-2026-08-21 完整 52-key/62-tag profile 已完成一次用户授权的低频生产密码登录验证：直接登录
-成功并获得约 15 天 Token，未触发 4006 短信验证或 RK008。不同账号、网络或服务端风控状态
-仍可能产生挑战，因此集成继续保留 4006 短信分支和 RK008 明确错误提示。
-
-## 认证策略
-
-首次配置只要求输入手机号和密码。登录 Token 过期后，集成会在后台自动使用
-已保存的密码登录；只有服务端返回 `4006` 新设备验证时，Home Assistant 才提示
-用户输入短信验证码。
-
-需要注意，某些账号或风控状态下，密码登录会返回：
-
-```text
-RK008 网络连接超时
-```
-
-APK 代码证明 `RK008` 是类型 `777` 的复杂滑块风险码，不是可以用六位短信码
-完成的 `4006` 新设备验证。本集成不绕过滑块；如果服务端强制滑块，密码登录将失败。
-
-## 错误诊断
-
-配置流会显示完整、不截断的上游错误来源、错误码和消息，例如：
-
-```text
-国家电网上游返回错误 [srvrt] RK008：网络连接超时(RK008),请重试!
-```
-
-已知错误码仍使用本地语义分类，但会同时保留服务端的原始 message。HA 日志只记录
-错误来源、code、异常类型和 message，不记录密码、验证码、请求体、登录 Token 或
-`deviceTokenTX`。
+目前不提供账户余额、年度电费和月度账单电费。南方电网账户不适用。
 
 ## 安装
 
-将目录复制到 Home Assistant：
+### 使用 HACS
 
-```text
-<HA config>/custom_components/state_grid/
-```
+1. 打开 HACS，进入“集成”。
+2. 右上角菜单选择“自定义存储库”。
+3. 添加仓库 `https://github.com/stevenjoezhang/hass-state-grid`，类别选择“集成”。
+4. 搜索并下载“国家电网”。
+5. 重启 Home Assistant。
 
-重启 HA，在“设置 → 设备与服务 → 添加集成”中搜索“国家电网”。也可以将本仓库作为 HACS
-自定义仓库安装。
+### 手动安装
 
-运行依赖由 `manifest.json` 自动安装：
+1. 下载本仓库。
+2. 将 `custom_components/state_grid` 复制到 Home Assistant 配置目录：
 
-- `gmssl==3.2.2`
-- `cryptography`
+   ```text
+   <HA config>/custom_components/state_grid/
+   ```
 
-## 配置流程
+3. 重启 Home Assistant。
 
-1. 输入网上国网手机号和密码。
-2. 集成首次创建 256-bit 随机 seed 并存入 HA config entry。
-3. seed 派生稳定的品牌、型号、Android ID、OAID、MAC 和 `AppGuid`。
-4. Python 生成并按官方逻辑缓存 `deviceTokenTX` 四小时。
-5. 调用 `c2/f01` 密码登录。
-6. 如果服务端要求 `4006` 新设备验证，发送 `logindevice` 短信并显示验证码表单。
-7. 保存用户名、密码、登录 Token 和必要户号字段。
+## 添加账户
 
-短信验证码和 `codeKey` 只保存在配置流内存中，成功或流结束后即丢弃。用户名、密码、
-登录 Token、profile seed 和最小化后的户号字段保存在 `.storage/core.config_entries`。
-Home Assistant 的 config entry 不对密码做额外加密，请严格保护配置目录和备份。
+1. 进入“设置 → 设备与服务”。
+2. 点击“添加集成”，搜索“国家电网”。
+3. 输入网上国网登录手机号和密码。
+4. 如果收到新设备安全验证短信，继续输入 6 位验证码。
 
-## 查询和实体
+配置成功后，每个绑定户号会显示为一个设备，并创建对应传感器。一个网上国网账户只需添加
+一次；同一账户下的多个户号会自动识别。
 
-默认每 12 小时更新，查询当前月及上一个自然月；选项中可设置 1–3 个月、6–24 小时周期。
+## 传感器
 
-每个户号创建：
+每个户号当前创建以下实体：
 
-- 最近一日电量；
-- 本月总用电量；
-- 本月谷/平/峰/尖电量；
-- 最近一日电费（服务端返回 `thisAmt` 时）。
+| 实体名称 | 单位 | 说明 |
+|---|---:|---|
+| 最近一日电量 | kWh | 上游已发布的最新一条每日用电量，不一定是昨天 |
+| 本月用电量 | kWh | 上游月累计值；缺失时由每日记录相加 |
+| 本月谷电量 | kWh | 本月谷时段累计电量 |
+| 本月平电量 | kWh | 本月平时段累计电量 |
+| 本月峰电量 | kWh | 本月峰时段累计电量 |
+| 本月尖电量 | kWh | 本月尖时段累计电量 |
+| 最近一日电费 | CNY | 仅当每日接口返回费用字段时有值，多数账户可能显示 `unknown` |
 
-“最近一日电量”的 `daily_history` 属性包含合并后的每日记录。服务端缺失值保留为 `unknown`，
-不会错误地填成零。
-最近一日电量和电费是已完成的历史日聚合值，因此不设置 `state_class`；本月累计电量
-传感器保持 `state_class=total`。
+“最近一日电量”实体包含以下附加属性：
 
-## Token 与重认证
+- `latest_date`：当前状态对应的日期；
+- `daily_history`：已查询月份的每日记录，包含电量和可用的峰谷平尖数据。
 
-登录 Token 约 15 天，没有独立 Refresh Token。集成行为：
+上游缺失的数据会保留为 `unknown`，不会自动填成 `0`。因此，某个分时传感器为 `unknown`
+通常表示该户号或地区没有返回该项数据，不表示整个集成不可用。
 
-1. Token 有效时直接查询；
-2. 查询返回 `-200/-201` 或本地到期时，自动使用已保存的用户名和密码登录；
-3. 密码登录成功时直接保存新 Token，不提醒用户；
-4. 只有服务端要求 `4006` 新设备验证时，才由 HA 发起重认证并输入短信码。
+## 查询设置
 
-整个生命周期不需要官方 App 或 Frida。
+在“设置 → 设备与服务 → 国家电网 → 配置”中可以调整：
 
-## 关键逆向修正
+| 选项 | 范围 | 默认值 |
+|---|---:|---:|
+| 查询最近几个月 | 1–3 个月 | 2 个月 |
+| 更新间隔 | 6–24 小时 | 12 小时 |
 
-原始 smali 证明 mode 0/1 都压缩：
+增加查询月份会产生更多上游请求。国家电网的每日数据通常不是实时数据，最新日期以实体的
+`latest_date` 属性为准。
 
-```text
-zlib(0x02 || native_m90_blob)
-```
+## 登录和短信验证
 
-RSA DER modulus 是 `00 || 256-byte modulus`。跳过符号前导 `00` 后，mode-1 RSA ciphertext 才是
-协议规定的 256 字节。此前的 2040-bit 错误解析会令服务端无法解出 XXTEA key。
+- 登录 Token 通常约 15 天有效；
+- Token 失效后，集成会在后台使用已保存的密码重新登录；
+- 只有服务端返回新设备验证要求时，才会发送短信验证码；
+- 验证码和临时 `codeKey` 不会持久保存。
 
-## 开发验证
+某些账号或网络环境可能收到 `RK008`。这表示服务端要求官方 App 才能完成的交互式安全验证，
+不是普通短信验证码。本集成不会尝试绕过该验证；遇到时请稍后重试、检查网络，或先在官方
+网上国网 App 中完成登录。
+
+## 常见问题
+
+### 搜索不到“国家电网”
+
+确认目录是 `custom_components/state_grid`，而不是多套一层仓库目录，并在安装后完整重启
+Home Assistant。使用 HACS 时也需要在下载后重启。
+
+### “最近一日电费”显示 unknown
+
+当前每日接口主要返回电量和峰谷平尖数据，很多地区不会返回日电费字段。因此该实体可能长期
+为 `unknown`，这不影响每日用电量查询。它也不是电费余额、应交金额或月度账单金额。
+
+### 峰、谷、平或尖电量显示 unknown
+
+并非所有地区、计价方式或电表都会返回完整分时数据。只要“最近一日电量”或“本月用电量”
+正常，就说明基础查询已经成功。
+
+### 数据日期不是今天或昨天
+
+每日数据由国家电网上游生成，可能延迟发布。请查看“最近一日电量”的 `latest_date` 属性；集成
+只展示上游返回的最新日期，不会将旧数据伪装成当天数据。
+
+### 配置时提示 4006
+
+这是新设备安全验证。集成会发送短信并显示验证码输入框，按提示完成即可。
+
+### 配置时提示 RK008
+
+这是服务端交互式风控，不是密码错误或 6 位短信验证。可以稍后重试、切换网络，或先在官方 App
+中完成安全验证。若持续出现，请在提交 Issue 时附上错误码和消息，但不要附密码、验证码、Token
+或完整日志中的请求内容。
+
+### 修改了网上国网密码
+
+当自动登录发现原密码失效时，Home Assistant 会发起重新认证。按照通知进入集成页面，输入新
+密码即可；不需要删除并重新添加集成。
+
+## 隐私与安全
+
+为支持自动重新登录，以下内容会保存在 Home Assistant 的
+`.storage/core.config_entries`：
+
+- 网上国网手机号和密码；
+- 登录 Token；
+- 本地生成的设备 profile seed；
+- 查询所需的最小户号信息。
+
+Home Assistant 的 config entry 不会额外加密密码。请保护 Home Assistant 配置目录、备份文件
+和管理员账户，不要将 `.storage` 上传到公开位置。
+
+本集成不会要求导出官方 App 数据，不携带官方 APK 或 native SO，也不需要 ADB、Frida、模拟器
+或浏览器。项目本身不包含遥测或统计上报。
+
+## 卸载
+
+先在“设置 → 设备与服务”中删除国家电网配置项，再通过 HACS 删除集成或手动移除
+`custom_components/state_grid`，最后重启 Home Assistant。
+
+## 获取帮助
+
+遇到问题请前往
+[GitHub Issues](https://github.com/stevenjoezhang/hass-state-grid/issues)。提交问题时建议提供：
+
+- Home Assistant 版本和集成版本；
+- 错误码及完整错误消息；
+- 哪些实体正常、哪些实体为 `unknown`；
+- 问题发生的大致时间和所在省份。
+
+请务必删除手机号、户号、地址、密码、验证码、Token、`deviceTokenTX` 和 profile seed。
+
+## 开发
+
+项目使用纯 Python 实现网上国网 App 请求协议和本地设备 profile。当前版本针对网上国网 Android
+3.2.3；App 或服务端协议升级后可能需要同步更新。
+
+运行测试和静态检查：
 
 ```bash
 uv run --python 3.13 --with pytest --with gmssl==3.2.2 \
   --with cryptography --with aiohttp --with homeassistant==2026.2.3 pytest -q
 
-uv run --python 3.13 --with ruff ruff check custom_components/state_grid
+uv run --with ruff ruff check custom_components/state_grid tests
 ```
 
-生成不含账号或登录 Token 的私有 Turing 字段诊断 JSON：
+本项目参考了 [ARC-MX/sgcc_electricity_new](https://github.com/ARC-MX/sgcc_electricity_new)
+和 [Bpazy/sgcc_electricity](https://github.com/Bpazy/sgcc_electricity) 的用户体验与实体设计。
 
-```bash
-uv run python tools/generate_turing_profile_diagnostics.py
-```
+## 许可证
 
-输出 `sgcc_device_profile.json`（权限 `0600`，已被 `.gitignore` 排除），逐项包含 Java key、
-native tag、生命周期、官方一致性策略、字段长度和 invariant 结果。生成器会额外模拟一小时后的
-第二次请求，用来确认 install/profile/boot 字段不意外变化。
-
-## 参考
-
-- [ARC-MX/sgcc_electricity_new](https://github.com/ARC-MX/sgcc_electricity_new)
-- [Bpazy/sgcc_electricity](https://github.com/Bpazy/sgcc_electricity)
-- 本地 `hass-iotbull` 的 config entry、协调器和实体结构
-
-当前实现针对网上国网 Android 3.2.3；协议或 Turing SDK 升级后可能需要更新。
+[MIT License](LICENSE)
