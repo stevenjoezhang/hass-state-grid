@@ -64,15 +64,14 @@
       "latest_daily_peak": {"name": "Latest daily peak usage"},
       "latest_daily_tip": {"name": "Latest daily tip usage"},
       "current_month_usage": {"name": "Current month usage"},
-      "current_month_valley": {"name": "Current month valley usage"},
-      "current_month_flat": {"name": "Current month flat usage"},
-      "current_month_peak": {"name": "Current month peak usage"},
-      "current_month_tip": {"name": "Current month tip usage"},
-      "latest_daily_charge": {"name": "Latest daily charge"},
+      "latest_daily_charge": {"name": "Previous available daily charge"},
       "latest_month_usage": {"name": "Latest settled month usage"},
       "latest_month_charge": {"name": "Latest settled month charge"},
       "current_year_usage": {"name": "Current year usage"},
-      "current_year_charge": {"name": "Current year charge"}
+      "current_year_charge": {"name": "Current year charge"},
+      "account_balance": {"name": "Account balance"},
+      "amount_due": {"name": "Amount due"},
+      "latest_month_meter_reading": {"name": "Last month meter reading"}
     }
   }
 }

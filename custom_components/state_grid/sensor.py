@@ -15,6 +15,7 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -27,6 +28,14 @@ from .models import AccountUsage
 @dataclass(frozen=True, kw_only=True)
 class StateGridSensorDescription(SensorEntityDescription):
     value_fn: Callable[[AccountUsage], float | None]
+
+
+REMOVED_SENSOR_KEYS = {
+    "current_month_valley",
+    "current_month_flat",
+    "current_month_peak",
+    "current_month_tip",
+}
 
 
 SENSORS = (
@@ -78,43 +87,13 @@ SENSORS = (
         ),
     ),
     StateGridSensorDescription(
-        key="current_month_valley",
-        translation_key="current_month_valley",
-        device_class=SensorDeviceClass.ENERGY,
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        state_class=SensorStateClass.TOTAL,
-        value_fn=lambda usage: usage.month_sum("valley"),
-    ),
-    StateGridSensorDescription(
-        key="current_month_flat",
-        translation_key="current_month_flat",
-        device_class=SensorDeviceClass.ENERGY,
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        state_class=SensorStateClass.TOTAL,
-        value_fn=lambda usage: usage.month_sum("flat"),
-    ),
-    StateGridSensorDescription(
-        key="current_month_peak",
-        translation_key="current_month_peak",
-        device_class=SensorDeviceClass.ENERGY,
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        state_class=SensorStateClass.TOTAL,
-        value_fn=lambda usage: usage.month_sum("peak"),
-    ),
-    StateGridSensorDescription(
-        key="current_month_tip",
-        translation_key="current_month_tip",
-        device_class=SensorDeviceClass.ENERGY,
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        state_class=SensorStateClass.TOTAL,
-        value_fn=lambda usage: usage.month_sum("tip"),
-    ),
-    StateGridSensorDescription(
         key="latest_daily_charge",
         translation_key="latest_daily_charge",
         device_class=SensorDeviceClass.MONETARY,
         native_unit_of_measurement="CNY",
-        value_fn=lambda usage: usage.latest.charge if usage.latest else None,
+        value_fn=lambda usage: (
+            usage.latest_charge.charge if usage.latest_charge else None
+        ),
     ),
     StateGridSensorDescription(
         key="latest_month_usage",
@@ -146,6 +125,31 @@ SENSORS = (
         state_class=SensorStateClass.TOTAL,
         value_fn=lambda usage: usage.current_year_charge,
     ),
+    StateGridSensorDescription(
+        key="account_balance",
+        translation_key="account_balance",
+        device_class=SensorDeviceClass.MONETARY,
+        native_unit_of_measurement="CNY",
+        value_fn=lambda usage: (
+            usage.billing_account.balance if usage.billing_account else None
+        ),
+    ),
+    StateGridSensorDescription(
+        key="amount_due",
+        translation_key="amount_due",
+        device_class=SensorDeviceClass.MONETARY,
+        native_unit_of_measurement="CNY",
+        value_fn=lambda usage: (
+            usage.billing_account.amount_due if usage.billing_account else None
+        ),
+    ),
+    StateGridSensorDescription(
+        key="latest_month_meter_reading",
+        translation_key="latest_month_meter_reading",
+        value_fn=lambda usage: (
+            usage.latest_month_meter.reading if usage.latest_month_meter else None
+        ),
+    ),
 )
 
 
@@ -155,6 +159,14 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     runtime: StateGridRuntimeData = hass.data[DOMAIN][entry.entry_id]
+    registry = er.async_get(hass)
+    for account_id in runtime.coordinator.data:
+        for key in REMOVED_SENSOR_KEYS:
+            entity_id = registry.async_get_entity_id(
+                "sensor", DOMAIN, f"{account_id}_{key}"
+            )
+            if entity_id is not None:
+                registry.async_remove(entity_id)
     entities = [
         StateGridElectricitySensor(runtime.coordinator, account_id, description)
         for account_id in runtime.coordinator.data
@@ -215,7 +227,13 @@ class StateGridElectricitySensor(
             "account_suffix": account.cons_no_src[-4:],
             "address": account.address,
         }
-        if self.entity_description.key.startswith("latest_daily_"):
+        if self.entity_description.key == "latest_daily_charge":
+            attributes["latest_date"] = (
+                self.usage.latest_charge.day.isoformat()
+                if self.usage.latest_charge
+                else None
+            )
+        elif self.entity_description.key.startswith("latest_daily_"):
             attributes["latest_date"] = (
                 self.usage.latest.day.isoformat() if self.usage.latest else None
             )
@@ -241,4 +259,20 @@ class StateGridElectricitySensor(
             "current_year_charge",
         }:
             attributes["billing_year"] = self.usage.as_of.year
+        if self.entity_description.key in {"account_balance", "amount_due"}:
+            balance = self.usage.billing_account
+            attributes["account_type"] = (
+                None
+                if balance is None
+                else "prepaid"
+                if balance.cons_type == "1"
+                else "postpaid"
+            )
+            attributes["balance_date"] = balance.date if balance else None
+            attributes["history_owe"] = balance.history_owe if balance else None
+            attributes["penalty"] = balance.penalty if balance else None
+        if self.entity_description.key == "latest_month_meter_reading":
+            meter = self.usage.latest_month_meter
+            attributes["reading_date"] = meter.day.isoformat() if meter else None
+            attributes["transformer_ratio"] = meter.transformer_ratio if meter else None
         return attributes

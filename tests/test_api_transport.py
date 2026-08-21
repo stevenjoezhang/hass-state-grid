@@ -18,6 +18,7 @@ from custom_components.state_grid.crypto import (
 from custom_components.state_grid.models import (
     DeviceProfile,
     LoginSession,
+    MonthlyBill,
     PowerAccount,
 )
 
@@ -266,6 +267,100 @@ def test_monthly_bill_query_transport() -> None:
             "funcCode": "ALIPAY_01",
         },
     }
+
+
+def test_balance_and_month_end_meter_transport() -> None:
+    balance_response = _response_envelope(
+        {
+            "code": 1,
+            "data": {
+                "rtnCode": "1",
+                "list": [
+                    {
+                        "consType": "1",
+                        "sumMoney": "86.50",
+                        "prepayBal": "0",
+                        "historyOwe": "0",
+                    }
+                ],
+            },
+        }
+    )
+    meter_list_response = _response_envelope(
+        {
+            "code": 1,
+            "data": {
+                "rtnCode": "1",
+                "list": [{"meterBarCode": "meter-1", "tFactor": "1"}],
+            },
+        }
+    )
+    meter_detail_response = _response_envelope(
+        {
+            "code": 1,
+            "data": {
+                "rtnCode": "1",
+                "list": [
+                    {"time": "0", "readPq": "1234.5"},
+                    {"time": "24", "readPq": "1246.7"},
+                ],
+            },
+        }
+    )
+    http = FakeHttp(balance_response, meter_list_response, meter_detail_response)
+    api = StateGridAppApi(
+        http,
+        username="11111111111",
+        password="password",
+        profile=_profile(),
+        login_session=LoginSession(
+            token="t" * 36,
+            user_id="u" * 32,
+            expires_at=9999999999,
+            user_info={"addressProvince": "420000"},
+        ),
+    )
+    account = PowerAccount.from_api(
+        {
+            "id": "account-1",
+            "powerUserNo": "cons-no",
+            "powerUserNo_dst": "cons-no-dst",
+            "proNo": "42101",
+            "orgNo": "org",
+            "elecType": "01",
+        }
+    )
+
+    balance = asyncio.run(api.async_query_account_balance(account))
+    meter = asyncio.run(
+        api.async_query_month_end_meter(
+            account,
+            MonthlyBill(
+                month=date(2026, 7, 1),
+                usage=269,
+                charge=131.35,
+                end_date=date(2026, 7, 31),
+            ),
+        )
+    )
+
+    assert balance is not None
+    assert balance.balance == 86.5
+    assert meter is not None
+    assert meter.day == date(2026, 7, 31)
+    assert meter.reading == 1246.7
+    assert meter.transformer_ratio == 1
+    assert [request["url"].split("/")[-2:] for request in http.requests] == [
+        ["c16", "f01"],
+        ["c11", "f09"],
+        ["c11", "f10"],
+    ]
+    balance_payload = _decrypt_request(http.requests[0]["data"])
+    assert balance_payload["serviceCode"] == "0101143"
+    assert balance_payload["data"]["userName"] == "acctid01"
+    meter_payload = _decrypt_request(http.requests[2]["data"])
+    assert meter_payload["data"]["meterBarCode"] == "meter-1"
+    assert meter_payload["data"]["ymd"] == "2026-07-31"
 
 
 def test_login_business_failure_is_authentication_error() -> None:

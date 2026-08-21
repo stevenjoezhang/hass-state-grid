@@ -25,10 +25,13 @@ from .login import (
     login_header_md5,
 )
 from .models import (
+    AccountBalance,
     AccountUsage,
     DailyReading,
     DeviceProfile,
     LoginSession,
+    MeterReading,
+    MonthlyBill,
     PowerAccount,
     YearlyBilling,
 )
@@ -38,6 +41,9 @@ DEVICE_SMS_PATH = "emss-uia-center-front/member/c1/f01"
 SMS_LOGIN_PATH = "emss-uia-center-front/member/c2/f02"
 DAILY_USAGE_PATH = "emss-bia-bill-front/member/c11/f01"
 MONTHLY_BILLS_PATH = "emss-bia-bill-front/member/c51/f04"
+ACCOUNT_BALANCE_PATH = "emss-bia-balance-front/member/c16/f01"
+METER_LIST_PATH = "emss-bia-bill-front/member/c11/f09"
+METER_DETAIL_PATH = "emss-bia-bill-front/member/c11/f10"
 AUTH_ERROR_CODES = {"-200", "-201"}
 DEVICE_VERIFICATION_CODE = "4006"
 INTERACTIVE_CHALLENGE_CODES = {"RK008"}
@@ -140,6 +146,67 @@ def build_monthly_bills_payload(account: PowerAccount, year: int) -> dict[str, A
     }
 
 
+def build_account_balance_payload(
+    account: PowerAccount, user_id: str
+) -> dict[str, Any]:
+    """Build the native home-card account balance request object."""
+    return {
+        "serviceCode": "0101143",
+        "source": "app",
+        "target": account.pro_no,
+        "data": {
+            "srvCode": "",
+            "serialNo": "",
+            "channelCode": "0902",
+            "funcCode": "A1007200",
+            "acctId": user_id,
+            "userName": "acctid01",
+            "promotType": "1",
+            "promotCode": "1",
+            "userAccountId": user_id,
+            "list": [
+                {
+                    "consNoSrc": account.cons_no_src,
+                    "proCode": account.pro_no,
+                    "sceneType": account.elec_type,
+                    "consNo": account.cons_no,
+                    "orgNo": account.org_no,
+                }
+            ],
+        },
+    }
+
+
+def build_meter_payload(
+    account: PowerAccount,
+    reading_date: date,
+    *,
+    meter_bar_code: str = "",
+) -> dict[str, Any]:
+    """Build the A10071400 meter-list or meter-detail request object."""
+    data = {
+        "promotCode": "1",
+        "promotType": "1",
+        "funcCode": "A10071400",
+        "acctId": "acctid01",
+        "userName": "acctid01",
+        "serialNo": "",
+        "srvCode": "123",
+        "channelCode": "SGAPP",
+        "consNo": account.cons_no_src,
+        "proCode": account.pro_no,
+        "ymd": reading_date.isoformat(),
+    }
+    if meter_bar_code:
+        data["meterBarCode"] = meter_bar_code
+    return {
+        "serviceCode": "0102719",
+        "source": "app",
+        "target": account.pro_no,
+        "data": data,
+    }
+
+
 def _srvrt(response: Mapping[str, Any]) -> tuple[str, str, Mapping[str, Any]]:
     data = response.get("data")
     if not isinstance(data, Mapping):
@@ -228,6 +295,7 @@ class StateGridAppApi:
         self.profile = profile
         self.login_session = login_session
         self._login_lock = asyncio.Lock()
+        self._meter_cache: dict[tuple[str, date], MeterReading] = {}
 
     @property
     def context(self) -> LoginMapContext:
@@ -527,20 +595,15 @@ class StateGridAppApi:
             )
         return await self.async_login()
 
-    async def async_query_daily_usage(
-        self, account: PowerAccount, start_date: date, end_date: date
-    ) -> tuple[list[DailyReading], float | None]:
+    async def _async_authenticated_data(
+        self, path: str, payload: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
+        """Post one authenticated request and retry once after token renewal."""
         await self.async_ensure_login()
-        payload = build_daily_usage_payload(account, start_date, end_date)
         for attempt in range(2):
-            response = await self._post(
-                DAILY_USAGE_PATH,
-                payload,
-                authenticated=True,
-            )
+            response = await self._post(path, payload, authenticated=True)
             try:
-                data = self._raise_for_error(response)
-                break
+                return self._raise_for_error(response)
             except StateGridAuthenticationError:
                 if attempt:
                     raise
@@ -548,15 +611,26 @@ class StateGridAppApi:
                 if not self.password:
                     raise
                 await self.async_login()
-        else:  # pragma: no cover - loop always breaks or raises
-            raise RuntimeError("unreachable")
-        return_code = str(data.get("returnCode", ""))
-        if return_code not in {"", "0", "1", "0000"}:
+        raise RuntimeError("unreachable")  # pragma: no cover
+
+    @staticmethod
+    def _raise_for_business_error(data: Mapping[str, Any], operation: str) -> None:
+        code = str(data.get("rtnCode", data.get("returnCode", "")))
+        if code not in {"", "0", "1", "0000", "000000"}:
             raise StateGridApiError(
-                return_code,
-                str(data.get("returnMsg") or "daily usage query failed"),
+                code,
+                str(
+                    data.get("rtnMsg") or data.get("returnMsg") or f"{operation} failed"
+                ),
                 source="business",
             )
+
+    async def async_query_daily_usage(
+        self, account: PowerAccount, start_date: date, end_date: date
+    ) -> tuple[list[DailyReading], float | None]:
+        payload = build_daily_usage_payload(account, start_date, end_date)
+        data = await self._async_authenticated_data(DAILY_USAGE_PATH, payload)
+        self._raise_for_business_error(data, "daily usage query")
         raw_readings = data.get("sevenEleList")
         readings: list[DailyReading] = []
         if isinstance(raw_readings, list):
@@ -582,27 +656,85 @@ class StateGridAppApi:
         self, account: PowerAccount, year: int
     ) -> YearlyBilling:
         """Query settled monthly electricity and charge totals for one year."""
-        await self.async_ensure_login()
         payload = build_monthly_bills_payload(account, year)
-        for attempt in range(2):
-            response = await self._post(
-                MONTHLY_BILLS_PATH,
-                payload,
-                authenticated=True,
-            )
-            try:
-                data = self._raise_for_error(response)
-                break
-            except StateGridAuthenticationError:
-                if attempt:
-                    raise
-                self.login_session = None
-                if not self.password:
-                    raise
-                await self.async_login()
-        else:  # pragma: no cover - loop always breaks or raises
-            raise RuntimeError("unreachable")
+        data = await self._async_authenticated_data(MONTHLY_BILLS_PATH, payload)
+        self._raise_for_business_error(data, "monthly bill query")
         return YearlyBilling.from_api(data, year)
+
+    async def async_query_account_balance(
+        self, account: PowerAccount
+    ) -> AccountBalance | None:
+        """Query prepaid balance or postpaid amount for one power account."""
+        session = await self.async_ensure_login()
+        payload = build_account_balance_payload(account, session.user_id)
+        data = await self._async_authenticated_data(ACCOUNT_BALANCE_PATH, payload)
+        self._raise_for_business_error(data, "account balance query")
+        raw_items = data.get("list")
+        if not isinstance(raw_items, list):
+            return None
+        item = next((value for value in raw_items if isinstance(value, Mapping)), None)
+        return AccountBalance.from_api(item) if item is not None else None
+
+    async def async_query_month_end_meter(
+        self, account: PowerAccount, bill: MonthlyBill
+    ) -> MeterReading | None:
+        """Query the last meter reading on the latest settled billing date."""
+        cache_key = (account.account_id, bill.month)
+        if cache_key in self._meter_cache:
+            return self._meter_cache[cache_key]
+        reading_date = bill.end_date or date(
+            bill.month.year,
+            bill.month.month,
+            calendar.monthrange(bill.month.year, bill.month.month)[1],
+        )
+        meter_data = await self._async_authenticated_data(
+            METER_LIST_PATH,
+            build_meter_payload(account, reading_date),
+        )
+        self._raise_for_business_error(meter_data, "meter list query")
+        raw_meters = meter_data.get("list")
+        if not isinstance(raw_meters, list):
+            return None
+        meter = next(
+            (value for value in raw_meters if isinstance(value, Mapping)), None
+        )
+        if meter is None or not meter.get("meterBarCode"):
+            return None
+
+        detail_data = await self._async_authenticated_data(
+            METER_DETAIL_PATH,
+            build_meter_payload(
+                account,
+                reading_date,
+                meter_bar_code=str(meter["meterBarCode"]),
+            ),
+        )
+        self._raise_for_business_error(detail_data, "meter detail query")
+        raw_readings = detail_data.get("list")
+        if not isinstance(raw_readings, list):
+            return None
+        readings: list[tuple[float, float]] = []
+        for value in raw_readings:
+            if not isinstance(value, Mapping):
+                continue
+            try:
+                readings.append((float(value.get("time", 0)), float(value["readPq"])))
+            except (KeyError, TypeError, ValueError):
+                continue
+        if not readings:
+            return None
+        transformer_ratio: float | None
+        try:
+            transformer_ratio = float(meter["tFactor"])
+        except (KeyError, TypeError, ValueError):
+            transformer_ratio = None
+        result = MeterReading(
+            day=reading_date,
+            reading=max(readings, key=lambda value: value[0])[1],
+            transformer_ratio=transformer_ratio,
+        )
+        self._meter_cache[cache_key] = result
+        return result
 
     async def async_query_history(
         self, *, months: int = 2, today: date | None = None
@@ -630,7 +762,7 @@ class StateGridAppApi:
                     current_total = total
 
             current_billing: YearlyBilling | None = None
-            monthly_bills = ()
+            monthly_bills: tuple[MonthlyBill, ...] = ()
             try:
                 current_billing = await self.async_query_monthly_bills(
                     account, today.year
@@ -647,6 +779,27 @@ class StateGridAppApi:
                 # Some regions or account types do not expose settled bills.
                 # Daily electricity remains useful, so keep those entities online.
                 pass
+
+            billing_account: AccountBalance | None = None
+            try:
+                billing_account = await self.async_query_account_balance(account)
+            except StateGridAuthenticationError:
+                raise
+            except (StateGridApiError, StateGridNetworkError):
+                # Balance is supplementary and varies by province/account type.
+                pass
+
+            latest_month_meter: MeterReading | None = None
+            if monthly_bills:
+                try:
+                    latest_month_meter = await self.async_query_month_end_meter(
+                        account, monthly_bills[-1]
+                    )
+                except StateGridAuthenticationError:
+                    raise
+                except (StateGridApiError, StateGridNetworkError):
+                    # The App exposes meter detail only in supported regions.
+                    pass
             result[account.account_id] = AccountUsage(
                 account=account,
                 readings=tuple(by_day[key] for key in sorted(by_day)),
@@ -659,5 +812,7 @@ class StateGridAppApi:
                 current_year_charge=(
                     current_billing.charge if current_billing is not None else None
                 ),
+                billing_account=billing_account,
+                latest_month_meter=latest_month_meter,
             )
         return result

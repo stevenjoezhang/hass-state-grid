@@ -181,7 +181,7 @@ def _number(value: Any) -> float | None:
 
 def _day(value: Any) -> date:
     text = str(value)
-    for pattern in ("%Y%m%d", "%Y-%m-%d"):
+    for pattern in ("%Y%m%d", "%Y-%m-%d", "%Y/%m/%d"):
         try:
             return datetime.strptime(text, pattern).date()
         except ValueError:
@@ -240,6 +240,8 @@ class MonthlyBill:
     month: date
     usage: float | None
     charge: float | None
+    start_date: date | None = None
+    end_date: date | None = None
 
     @classmethod
     def from_api(cls, value: Mapping[str, Any]) -> MonthlyBill:
@@ -258,10 +260,26 @@ class MonthlyBill:
         if charge is None:
             charge = _sum_numbers([item.get("amt") for item in mappings])
 
+        dates: list[tuple[date | None, date | None]] = []
+        for item in mappings:
+            try:
+                start = _day(item.get("begDate")) if item.get("begDate") else None
+            except ValueError:
+                start = None
+            try:
+                end = _day(item.get("endDate")) if item.get("endDate") else None
+            except ValueError:
+                end = None
+            dates.append((start, end))
+        starts = [start for start, _end in dates if start is not None]
+        ends = [end for _start, end in dates if end is not None]
+
         return cls(
             month=_month(value.get("ym", value.get("month"))),
             usage=usage,
             charge=charge,
+            start_date=min(starts) if starts else None,
+            end_date=max(ends) if ends else None,
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -269,6 +287,8 @@ class MonthlyBill:
             "month": self.month.strftime("%Y-%m"),
             "usage": self.usage,
             "charge": self.charge,
+            "start_date": self.start_date.isoformat() if self.start_date else None,
+            "end_date": self.end_date.isoformat() if self.end_date else None,
         }
 
 
@@ -310,6 +330,54 @@ class YearlyBilling:
 
 
 @dataclass(frozen=True)
+class AccountBalance:
+    """Prepaid balance or postpaid amount returned by the App home endpoint."""
+
+    cons_type: str
+    sum_money: float | None
+    account_balance: float | None
+    prepay_balance: float | None
+    history_owe: float | None
+    penalty: float | None
+    date: str
+
+    @classmethod
+    def from_api(cls, value: Mapping[str, Any]) -> AccountBalance:
+        return cls(
+            cons_type=str(value.get("consType", "")),
+            sum_money=_number(value.get("sumMoney")),
+            account_balance=_number(value.get("accountBalance")),
+            prepay_balance=_number(value.get("prepayBal")),
+            history_owe=_number(value.get("historyOwe")),
+            penalty=_number(value.get("penalty")),
+            date=str(value.get("date") or value.get("amtTime") or ""),
+        )
+
+    @property
+    def balance(self) -> float | None:
+        if self.cons_type == "1":
+            return self.sum_money if self.sum_money is not None else self.prepay_balance
+        if self.account_balance is not None and self.account_balance > 0:
+            return self.account_balance
+        if self.prepay_balance is not None and self.prepay_balance > 0:
+            return self.prepay_balance
+        return None
+
+    @property
+    def amount_due(self) -> float | None:
+        return self.sum_money if self.cons_type != "1" else None
+
+
+@dataclass(frozen=True)
+class MeterReading:
+    """Latest cumulative reading on the last settled billing date."""
+
+    day: date
+    reading: float
+    transformer_ratio: float | None = None
+
+
+@dataclass(frozen=True)
 class AccountUsage:
     """Merged daily history for one power account."""
 
@@ -320,6 +388,8 @@ class AccountUsage:
     monthly_bills: tuple[MonthlyBill, ...] = ()
     current_year_usage: float | None = None
     current_year_charge: float | None = None
+    billing_account: AccountBalance | None = None
+    latest_month_meter: MeterReading | None = None
 
     @property
     def latest(self) -> DailyReading | None:
@@ -328,6 +398,17 @@ class AccountUsage:
     @property
     def latest_bill(self) -> MonthlyBill | None:
         return self.monthly_bills[-1] if self.monthly_bills else None
+
+    @property
+    def latest_charge(self) -> DailyReading | None:
+        return next(
+            (
+                reading
+                for reading in reversed(self.readings)
+                if reading.charge is not None
+            ),
+            None,
+        )
 
     def month_sum(self, field_name: str, today: date | None = None) -> float | None:
         today = today or self.as_of

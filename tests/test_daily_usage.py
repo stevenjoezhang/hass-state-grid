@@ -6,10 +6,13 @@ from custom_components.state_grid.api import (
     StateGridAppApi,
     StateGridDeviceVerificationRequired,
     StateGridInteractiveChallengeRequired,
+    build_account_balance_payload,
     build_daily_usage_payload,
+    build_meter_payload,
     build_monthly_bills_payload,
 )
 from custom_components.state_grid.models import (
+    AccountBalance,
     AccountUsage,
     DailyReading,
     PowerAccount,
@@ -70,6 +73,49 @@ def test_monthly_payload_matches_recovered_micro_app_map() -> None:
     }
 
 
+def test_balance_payload_matches_recovered_native_home_map() -> None:
+    payload = build_account_balance_payload(_account(), "user-id")
+
+    assert payload == {
+        "serviceCode": "0101143",
+        "source": "app",
+        "target": "42101",
+        "data": {
+            "srvCode": "",
+            "serialNo": "",
+            "channelCode": "0902",
+            "funcCode": "A1007200",
+            "acctId": "user-id",
+            "userName": "acctid01",
+            "promotType": "1",
+            "promotCode": "1",
+            "userAccountId": "user-id",
+            "list": [
+                {
+                    "consNoSrc": "masked-cons-no",
+                    "proCode": "42101",
+                    "sceneType": "01",
+                    "consNo": "raw-cons-no",
+                    "orgNo": "org",
+                }
+            ],
+        },
+    }
+
+
+def test_meter_payload_matches_recovered_micro_app_map() -> None:
+    payload = build_meter_payload(
+        _account(), date(2026, 7, 31), meter_bar_code="meter-1"
+    )
+
+    assert payload["serviceCode"] == "0102719"
+    assert payload["source"] == "app"
+    assert payload["data"]["funcCode"] == "A10071400"
+    assert payload["data"]["consNo"] == "masked-cons-no"
+    assert payload["data"]["ymd"] == "2026-07-31"
+    assert payload["data"]["meterBarCode"] == "meter-1"
+
+
 def test_monthly_billing_parses_current_app_response() -> None:
     billing = YearlyBilling.from_api(
         {
@@ -111,13 +157,20 @@ def test_monthly_billing_parses_current_app_response() -> None:
     assert billing.bills[0].charge == 179.21
     assert billing.bills[1].usage == 269
     assert billing.bills[1].charge == 131.35
+    assert billing.bills[1].start_date == date(2026, 7, 1)
+    assert billing.bills[1].end_date == date(2026, 7, 31)
 
 
 def test_daily_reading_and_month_aggregation() -> None:
     readings = tuple(
         DailyReading.from_api(item)
         for item in (
-            {"day": "20260801", "dayElePq": "1.2", "thisVPq": "0.2"},
+            {
+                "day": "20260801",
+                "dayElePq": "1.2",
+                "thisVPq": "0.2",
+                "thisAmt": "0.66",
+            },
             {"day": "20260802", "dayElePq": "2.3", "thisVPq": "-"},
         )
     )
@@ -126,6 +179,22 @@ def test_daily_reading_and_month_aggregation() -> None:
     assert usage.month_sum("usage", date(2026, 8, 19)) == 3.5
     assert usage.month_sum("valley", date(2026, 8, 19)) == 0.2
     assert readings[1].valley is None
+    assert usage.latest_charge is readings[0]
+    assert usage.latest_charge.charge == 0.66
+
+
+def test_prepaid_balance_and_postpaid_amount_due_are_separate() -> None:
+    prepaid = AccountBalance.from_api(
+        {"consType": "1", "sumMoney": "86.50", "prepayBal": "0"}
+    )
+    postpaid = AccountBalance.from_api(
+        {"consType": "0", "sumMoney": "42.30", "historyOwe": "5"}
+    )
+
+    assert prepaid.balance == 86.5
+    assert prepaid.amount_due is None
+    assert postpaid.balance is None
+    assert postpaid.amount_due == 42.3
 
 
 def test_4006_is_device_verification_not_bad_password() -> None:

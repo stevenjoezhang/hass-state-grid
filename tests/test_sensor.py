@@ -2,7 +2,7 @@
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 
-from custom_components.state_grid.sensor import SENSORS
+from custom_components.state_grid.sensor import REMOVED_SENSOR_KEYS, SENSORS
 
 
 def test_historical_daily_sensors_do_not_claim_live_statistics() -> None:
@@ -34,18 +34,12 @@ def test_historical_daily_sensors_do_not_claim_live_statistics() -> None:
     assert latest_month_charge.state_class is None
 
 
-def test_current_month_energy_sensors_remain_totals() -> None:
+def test_only_current_month_total_remains() -> None:
     descriptions = {description.key: description for description in SENSORS}
 
-    for key in (
-        "current_month_usage",
-        "current_month_valley",
-        "current_month_flat",
-        "current_month_peak",
-        "current_month_tip",
-    ):
-        assert descriptions[key].device_class is SensorDeviceClass.ENERGY
-        assert descriptions[key].state_class is SensorStateClass.TOTAL
+    assert descriptions["current_month_usage"].device_class is SensorDeviceClass.ENERGY
+    assert descriptions["current_month_usage"].state_class is SensorStateClass.TOTAL
+    assert REMOVED_SENSOR_KEYS.isdisjoint(descriptions)
 
 
 def test_current_year_sensors_are_totals() -> None:
@@ -57,3 +51,13 @@ def test_current_year_sensors_are_totals() -> None:
         descriptions["current_year_charge"].device_class is SensorDeviceClass.MONETARY
     )
     assert descriptions["current_year_charge"].state_class is SensorStateClass.TOTAL
+
+
+def test_balance_and_meter_sensors_use_compatible_metadata() -> None:
+    descriptions = {description.key: description for description in SENSORS}
+
+    for key in ("account_balance", "amount_due"):
+        assert descriptions[key].device_class is SensorDeviceClass.MONETARY
+        assert descriptions[key].state_class is None
+    assert descriptions["latest_month_meter_reading"].device_class is None
+    assert descriptions["latest_month_meter_reading"].state_class is None
