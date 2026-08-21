@@ -12,3 +12,4 @@ sgcc_login_state.json
 sgcc_login_profile.json
 sgcc_login_challenge.json
 sgcc_login_result.json
+analysis/
