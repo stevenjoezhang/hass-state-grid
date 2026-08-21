@@ -31,6 +31,10 @@ class StateGridSensorDescription(SensorEntityDescription):
 
 
 REMOVED_SENSOR_KEYS = {
+    "latest_daily_valley",
+    "latest_daily_flat",
+    "latest_daily_peak",
+    "latest_daily_tip",
     "current_month_valley",
     "current_month_flat",
     "current_month_peak",
@@ -45,34 +49,6 @@ SENSORS = (
         device_class=SensorDeviceClass.ENERGY,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         value_fn=lambda usage: usage.latest.usage if usage.latest else None,
-    ),
-    StateGridSensorDescription(
-        key="latest_daily_valley",
-        translation_key="latest_daily_valley",
-        device_class=SensorDeviceClass.ENERGY,
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        value_fn=lambda usage: usage.latest.valley if usage.latest else None,
-    ),
-    StateGridSensorDescription(
-        key="latest_daily_flat",
-        translation_key="latest_daily_flat",
-        device_class=SensorDeviceClass.ENERGY,
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        value_fn=lambda usage: usage.latest.flat if usage.latest else None,
-    ),
-    StateGridSensorDescription(
-        key="latest_daily_peak",
-        translation_key="latest_daily_peak",
-        device_class=SensorDeviceClass.ENERGY,
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        value_fn=lambda usage: usage.latest.peak if usage.latest else None,
-    ),
-    StateGridSensorDescription(
-        key="latest_daily_tip",
-        translation_key="latest_daily_tip",
-        device_class=SensorDeviceClass.ENERGY,
-        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        value_fn=lambda usage: usage.latest.tip if usage.latest else None,
     ),
     StateGridSensorDescription(
         key="current_month_usage",

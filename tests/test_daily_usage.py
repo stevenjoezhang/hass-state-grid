@@ -172,10 +172,12 @@ def test_daily_reading_and_month_aggregation() -> None:
                 "thisAmt": "0.66",
             },
             {"day": "20260802", "dayElePq": "2.3", "thisVPq": "-"},
+            {"day": "20260803", "dayElePq": "-"},
         )
     )
     usage = AccountUsage(_account(), readings, None)
     assert usage.latest.day == date(2026, 8, 2)
+    assert usage.latest.usage == 2.3
     assert usage.month_sum("usage", date(2026, 8, 19)) == 3.5
     assert usage.month_sum("valley", date(2026, 8, 19)) == 0.2
     assert readings[1].valley is None

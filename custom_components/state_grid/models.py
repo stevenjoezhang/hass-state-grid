@@ -393,7 +393,14 @@ class AccountUsage:
 
     @property
     def latest(self) -> DailyReading | None:
-        return self.readings[-1] if self.readings else None
+        return next(
+            (
+                reading
+                for reading in reversed(self.readings)
+                if reading.usage is not None
+            ),
+            None,
+        )
 
     @property
     def latest_bill(self) -> MonthlyBill | None:
