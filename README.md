@@ -34,6 +34,10 @@ tokenExpireTime：1296000（约 15 天）
 
 真实凭据、验证码、`codeKey`、Token 和完整 `deviceTokenTX` 均未写入测试日志。
 
+2026-08-21 完整 52-key/62-tag profile 已完成一次用户授权的低频生产密码登录验证：直接登录
+成功并获得约 15 天 Token，未触发 4006 短信验证或 RK008。不同账号、网络或服务端风控状态
+仍可能产生挑战，因此集成继续保留 4006 短信分支和 RK008 明确错误提示。
+
 ## 认证策略
 
 首次配置只要求输入手机号和密码。登录 Token 过期后，集成会在后台自动使用
@@ -137,6 +141,16 @@ uv run --python 3.13 --with pytest --with gmssl==3.2.2 \
 
 uv run --python 3.13 --with ruff ruff check custom_components/state_grid
 ```
+
+生成不含账号或登录 Token 的私有 Turing 字段诊断 JSON：
+
+```bash
+uv run python tools/generate_turing_profile_diagnostics.py
+```
+
+输出 `sgcc_device_profile.json`（权限 `0600`，已被 `.gitignore` 排除），逐项包含 Java key、
+native tag、生命周期、官方一致性策略、字段长度和 invariant 结果。生成器会额外模拟一小时后的
+第二次请求，用来确认 install/profile/boot 字段不意外变化。
 
 ## 参考
 

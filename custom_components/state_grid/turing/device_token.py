@@ -16,43 +16,18 @@ from .jce import encode_mode1, serialize_m90_full, serialize_turing_nested
 
 CHANNEL = "10000191"
 BUILD_MARKER = "77F2B17A00A92C71"
-FALLBACK_STATUS_CODE = -10004
-TOKEN_SCHEMA_VERSION = 4
-PERFORMANCE_FEATURES = (
-    22,
-    100,
-    101,
-    102,
-    103,
-    104,
-    105,
-    106,
-    115,
-    116,
-    107,
-    113,
-    114,
-    117,
-    44,
-    17,
-    118,
-    120,
-    122,
-    126,
-    24,
-    140,
-    138,
-    145,
-    146,
-    149,
-    150,
-    151,
-)
-
+FALLBACK_STATUS_CODE = -22056
+TOKEN_SCHEMA_VERSION = 6
 # Java Cantaloupe feature key -> nested tag written by 0x410734/0x4107cc.
 NESTED_TAG_BY_FEATURE_KEY = {
+    205: 22,
     207: 28,
+    250: 100,
+    251: 101,
     252: 102,
+    253: 103,
+    254: 104,
+    255: 105,
     256: 106,
     268: 115,
     258: 113,
@@ -79,6 +54,10 @@ NESTED_TAG_BY_FEATURE_KEY = {
     2021: 140,
     283: 145,
     284: 146,
+    285: 149,
+    286: 150,
+    287: 151,
+    288: 152,
     2029: 147,
     2024: 147,
     271: 46,
@@ -128,24 +107,27 @@ def _mapped_nested_features(features: Mapping[int, str]) -> list[tuple[int, str]
     mapped: dict[int, str] = {}
     for source_key, nested_tag in NESTED_TAG_BY_FEATURE_KEY.items():
         value = features.get(source_key)
-        if value not in (None, ""):
+        if value is not None:
             mapped[nested_tag] = str(value)
     return sorted(mapped.items())
 
 
 def _direct_values(
-    features: Mapping[int, str], tag10: str, tag12: str
+    features: Mapping[int | str, str],
+    tag10: str,
+    tag12: str,
+    process_context: str,
+    performance_context: str,
 ) -> list[tuple[int, str]]:
-    direct: list[tuple[int, str]] = []
-    for source_key, tag in ((303, 3), (308, 8), (309, 9), (4, 4)):
-        value = features.get(source_key)
-        if value not in (None, ""):
-            direct.append((tag, str(value)))
-    # sub_410e2c appends Process UID only when tag 3 exists.
-    if features.get(303) and features.get(2018):
-        direct.append((7, f"{features[303]}_{features[2018]}"))
-    direct.extend(((10, tag10), (12, tag12)))
-    return direct
+    return [
+        (3, str(features[303])),
+        (8, str(features[308])),
+        (9, str(features[309])),
+        (7, process_context),
+        (10, tag10),
+        (12, tag12),
+        (4, performance_context),
+    ]
 
 
 def _fallback_nonce() -> str:
@@ -153,34 +135,39 @@ def _fallback_nonce() -> str:
     return "".join(secrets.choice(alphabet) for _ in range(32))
 
 
-def _performance_context() -> str:
-    return ",".join(f"{feature}_0" for feature in PERFORMANCE_FEATURES) + ",s9_0"
-
-
 def generate_device_token(
     profile: StableProfile,
     *,
     timestamp_ms: int | None = None,
-    network_host: str = "127.0.0.1",
     fallback_status_code: int = FALLBACK_STATUS_CODE,
 ) -> GeneratedDeviceToken:
     """Generate one fresh mode-1 candidate without Android or Frida."""
     timestamp_ms = int(time.time() * 1000) if timestamp_ms is None else timestamp_ms
     identity = profile.identity()
-    features = profile.feature_map(timestamp_ms)
-    # Carambola places Cinterface.a() in Java map key "4".  Native 0x410518
-    # consumes it inside the nested/direct feature object.
-    features[4] = _performance_context()
+    nonce = _fallback_nonce()
+    features = profile.feature_map(
+        timestamp_ms,
+        fallback_status_code=fallback_status_code,
+        token_nonce=nonce,
+    )
 
-    tag10, tag12 = generate_feature_hash_tags(features, timestamp_ms)
-
-    nested_features = _mapped_nested_features(features)
+    nested_features = sorted(profile.native_feature_map(timestamp_ms).items())
+    tag10, tag12 = generate_feature_hash_tags(dict(nested_features), timestamp_ms)
+    uid = features[2018]
+    process_context = f"{identity.package_name}:tools,{uid},untrusted_app,{uid},,init"
     nested = serialize_turing_nested(
         timestamp_ms=timestamp_ms,
         metadata={0: 90, 1: "90", 2: BUILD_MARKER, 3: CHANNEL, 4: 2},
         feature_values=nested_features,
-        network=("0", network_host),
-        direct_values=_direct_values(features, tag10, tag12),
+        network=("3.2.3,113", identity.package_name),
+        direct_values=_direct_values(
+            features,
+            tag10,
+            tag12,
+            process_context,
+            profile.direct_performance_context(timestamp_ms),
+        ),
+        extra_map_values=((2, ""),),
         type8_values={
             1: features.get(405, ""),
             2: features.get(402, ""),
@@ -201,7 +188,7 @@ def generate_device_token(
         context_value=identity.package_name,
         status_code=fallback_status_code,
         status_text=str(fallback_status_code),
-        extra_field=_fallback_nonce(),
+        extra_field=nonce,
     )
     token = encode_mode1(m90)
     return GeneratedDeviceToken(
@@ -209,7 +196,7 @@ def generate_device_token(
         token_time=str(timestamp_ms)[:10],
         timestamp_ms=timestamp_ms,
         profile_id=identity.profile_id,
-        feature_count=len(features),
+        feature_count=len(nested_features),
         nested_feature_count=len(nested_features),
         fallback_status_code=fallback_status_code,
     )
