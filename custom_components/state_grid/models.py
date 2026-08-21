@@ -189,6 +189,22 @@ def _day(value: Any) -> date:
     raise ValueError(f"unsupported electricity date: {text!r}")
 
 
+def _month(value: Any) -> date:
+    text = str(value).strip()
+    for pattern in ("%Y%m", "%Y-%m", "%Y/%m"):
+        try:
+            parsed = datetime.strptime(text, pattern)
+        except ValueError:
+            continue
+        return date(parsed.year, parsed.month, 1)
+    raise ValueError(f"unsupported electricity month: {text!r}")
+
+
+def _sum_numbers(values: list[Any]) -> float | None:
+    numbers = [number for value in values if (number := _number(value)) is not None]
+    return round(sum(numbers), 6) if numbers else None
+
+
 @dataclass(frozen=True)
 class DailyReading:
     day: date
@@ -218,6 +234,82 @@ class DailyReading:
 
 
 @dataclass(frozen=True)
+class MonthlyBill:
+    """One settled billing month returned by the App monthly-charge endpoint."""
+
+    month: date
+    usage: float | None
+    charge: float | None
+
+    @classmethod
+    def from_api(cls, value: Mapping[str, Any]) -> MonthlyBill:
+        settlements = value.get("eleList")
+        if not isinstance(settlements, list):
+            settlements = []
+        mappings = [item for item in settlements if isinstance(item, Mapping)]
+
+        usage = _number(value.get("monthPq", value.get("monthEleNum", value.get("pq"))))
+        if usage is None:
+            usage = _sum_numbers([item.get("pq") for item in mappings])
+
+        charge = _number(
+            value.get("monthAmt", value.get("monthEleCost", value.get("amt")))
+        )
+        if charge is None:
+            charge = _sum_numbers([item.get("amt") for item in mappings])
+
+        return cls(
+            month=_month(value.get("ym", value.get("month"))),
+            usage=usage,
+            charge=charge,
+        )
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "month": self.month.strftime("%Y-%m"),
+            "usage": self.usage,
+            "charge": self.charge,
+        }
+
+
+@dataclass(frozen=True)
+class YearlyBilling:
+    """Settled monthly bills and annual totals for one calendar year."""
+
+    year: int
+    bills: tuple[MonthlyBill, ...]
+    usage: float | None
+    charge: float | None
+
+    @classmethod
+    def from_api(cls, value: Mapping[str, Any], year: int) -> YearlyBilling:
+        raw_bills = value.get("list")
+        if not isinstance(raw_bills, list):
+            raw_bills = value.get("mothEleList")
+        if not isinstance(raw_bills, list):
+            raw_bills = []
+
+        by_month: dict[date, MonthlyBill] = {}
+        for item in raw_bills:
+            if not isinstance(item, Mapping):
+                continue
+            try:
+                bill = MonthlyBill.from_api(item)
+            except ValueError:
+                continue
+            by_month[bill.month] = bill
+        bills = tuple(by_month[month] for month in sorted(by_month))
+
+        usage = _number(value.get("yearPq"))
+        if usage is None:
+            usage = _sum_numbers([bill.usage for bill in bills])
+        charge = _number(value.get("yearAmt"))
+        if charge is None:
+            charge = _sum_numbers([bill.charge for bill in bills])
+        return cls(year=year, bills=bills, usage=usage, charge=charge)
+
+
+@dataclass(frozen=True)
 class AccountUsage:
     """Merged daily history for one power account."""
 
@@ -225,10 +317,17 @@ class AccountUsage:
     readings: tuple[DailyReading, ...]
     current_month_total: float | None
     as_of: date = field(default_factory=lambda: datetime.now(CHINA_TZ).date())
+    monthly_bills: tuple[MonthlyBill, ...] = ()
+    current_year_usage: float | None = None
+    current_year_charge: float | None = None
 
     @property
     def latest(self) -> DailyReading | None:
         return self.readings[-1] if self.readings else None
+
+    @property
+    def latest_bill(self) -> MonthlyBill | None:
+        return self.monthly_bills[-1] if self.monthly_bills else None
 
     def month_sum(self, field_name: str, today: date | None = None) -> float | None:
         today = today or self.as_of

@@ -88,6 +88,36 @@ SENSORS = (
         native_unit_of_measurement="CNY",
         value_fn=lambda usage: usage.latest.charge if usage.latest else None,
     ),
+    StateGridSensorDescription(
+        key="latest_month_usage",
+        translation_key="latest_month_usage",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        value_fn=lambda usage: usage.latest_bill.usage if usage.latest_bill else None,
+    ),
+    StateGridSensorDescription(
+        key="latest_month_charge",
+        translation_key="latest_month_charge",
+        device_class=SensorDeviceClass.MONETARY,
+        native_unit_of_measurement="CNY",
+        value_fn=lambda usage: usage.latest_bill.charge if usage.latest_bill else None,
+    ),
+    StateGridSensorDescription(
+        key="current_year_usage",
+        translation_key="current_year_usage",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        state_class=SensorStateClass.TOTAL,
+        value_fn=lambda usage: usage.current_year_usage,
+    ),
+    StateGridSensorDescription(
+        key="current_year_charge",
+        translation_key="current_year_charge",
+        device_class=SensorDeviceClass.MONETARY,
+        native_unit_of_measurement="CNY",
+        state_class=SensorStateClass.TOTAL,
+        value_fn=lambda usage: usage.current_year_charge,
+    ),
 )
 
 
@@ -164,4 +194,22 @@ class StateGridElectricitySensor(
             attributes["daily_history"] = [
                 reading.as_dict() for reading in self.usage.readings
             ]
+        if self.entity_description.key in {
+            "latest_month_usage",
+            "latest_month_charge",
+        }:
+            attributes["latest_bill_month"] = (
+                self.usage.latest_bill.month.strftime("%Y-%m")
+                if self.usage.latest_bill
+                else None
+            )
+        if self.entity_description.key == "latest_month_usage":
+            attributes["monthly_bill_history"] = [
+                bill.as_dict() for bill in self.usage.monthly_bills
+            ]
+        if self.entity_description.key in {
+            "current_year_usage",
+            "current_year_charge",
+        }:
+            attributes["billing_year"] = self.usage.as_of.year
         return attributes

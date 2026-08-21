@@ -64,7 +64,11 @@
       "current_month_flat": {"name": "Current month flat usage"},
       "current_month_peak": {"name": "Current month peak usage"},
       "current_month_tip": {"name": "Current month tip usage"},
-      "latest_daily_charge": {"name": "Latest daily charge"}
+      "latest_daily_charge": {"name": "Latest daily charge"},
+      "latest_month_usage": {"name": "Latest settled month usage"},
+      "latest_month_charge": {"name": "Latest settled month charge"},
+      "current_year_usage": {"name": "Current year usage"},
+      "current_year_charge": {"name": "Current year charge"}
     }
   }
 }

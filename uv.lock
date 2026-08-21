@@ -4,5 +4,5 @@ requires-python = ">=3.12"
 
 [[package]]
 name = "hass-state-grid"
-version = "0.4.0"
+version = "0.5.0"
 source = { virtual = "." }

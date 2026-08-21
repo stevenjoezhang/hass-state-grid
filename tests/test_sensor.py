@@ -16,6 +16,14 @@ def test_historical_daily_sensors_do_not_claim_live_statistics() -> None:
     assert daily_charge.device_class is SensorDeviceClass.MONETARY
     assert daily_charge.state_class is None
 
+    latest_month_usage = descriptions["latest_month_usage"]
+    assert latest_month_usage.device_class is SensorDeviceClass.ENERGY
+    assert latest_month_usage.state_class is None
+
+    latest_month_charge = descriptions["latest_month_charge"]
+    assert latest_month_charge.device_class is SensorDeviceClass.MONETARY
+    assert latest_month_charge.state_class is None
+
 
 def test_current_month_energy_sensors_remain_totals() -> None:
     descriptions = {description.key: description for description in SENSORS}
@@ -29,3 +37,14 @@ def test_current_month_energy_sensors_remain_totals() -> None:
     ):
         assert descriptions[key].device_class is SensorDeviceClass.ENERGY
         assert descriptions[key].state_class is SensorStateClass.TOTAL
+
+
+def test_current_year_sensors_are_totals() -> None:
+    descriptions = {description.key: description for description in SENSORS}
+
+    assert descriptions["current_year_usage"].device_class is SensorDeviceClass.ENERGY
+    assert descriptions["current_year_usage"].state_class is SensorStateClass.TOTAL
+    assert (
+        descriptions["current_year_charge"].device_class is SensorDeviceClass.MONETARY
+    )
+    assert descriptions["current_year_charge"].state_class is SensorStateClass.TOTAL

@@ -7,8 +7,14 @@ from custom_components.state_grid.api import (
     StateGridDeviceVerificationRequired,
     StateGridInteractiveChallengeRequired,
     build_daily_usage_payload,
+    build_monthly_bills_payload,
 )
-from custom_components.state_grid.models import AccountUsage, DailyReading, PowerAccount
+from custom_components.state_grid.models import (
+    AccountUsage,
+    DailyReading,
+    PowerAccount,
+    YearlyBilling,
+)
 
 
 def _account(elec_type: str = "01", pro_no: str = "42101") -> PowerAccount:
@@ -44,6 +50,67 @@ def test_daily_payload_matches_recovered_micro_app_map() -> None:
 )
 def test_cons_type_rule(elec_type: str, pro_no: str, expected: str) -> None:
     assert _account(elec_type, pro_no).cons_type == expected
+
+
+def test_monthly_payload_matches_recovered_micro_app_map() -> None:
+    payload = build_monthly_bills_payload(_account(), 2026)
+
+    assert payload == {
+        "serviceCode": "BCP_000026",
+        "source": "app",
+        "target": "42101",
+        "data": {
+            "year": 2026,
+            "consNo": "raw-cons-no",
+            "provinceCode": "42101",
+            "startYm": "202601",
+            "endYm": "202612",
+            "funcCode": "ALIPAY_01",
+        },
+    }
+
+
+def test_monthly_billing_parses_current_app_response() -> None:
+    billing = YearlyBilling.from_api(
+        {
+            "yearPq": "636.04",
+            "yearAmt": "310.56",
+            "list": [
+                {
+                    "ym": "202607",
+                    "monthPq": "269",
+                    "eleList": [
+                        {
+                            "begDate": "2026/07/01",
+                            "endDate": "2026/07/31",
+                            "pq": "269",
+                            "amt": "131.35",
+                        }
+                    ],
+                },
+                {
+                    "ym": "202606",
+                    "monthPq": "367.04",
+                    "eleList": [
+                        {"pq": "300", "amt": "150"},
+                        {"pq": "67.04", "amt": "29.21"},
+                    ],
+                },
+            ],
+        },
+        2026,
+    )
+
+    assert billing.usage == 636.04
+    assert billing.charge == 310.56
+    assert [bill.month.isoformat() for bill in billing.bills] == [
+        "2026-06-01",
+        "2026-07-01",
+    ]
+    assert billing.bills[0].usage == 367.04
+    assert billing.bills[0].charge == 179.21
+    assert billing.bills[1].usage == 269
+    assert billing.bills[1].charge == 131.35
 
 
 def test_daily_reading_and_month_aggregation() -> None:

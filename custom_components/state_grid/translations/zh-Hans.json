@@ -64,7 +64,11 @@
       "current_month_flat": {"name": "本月平电量"},
       "current_month_peak": {"name": "本月峰电量"},
       "current_month_tip": {"name": "本月尖电量"},
-      "latest_daily_charge": {"name": "最近一日电费"}
+      "latest_daily_charge": {"name": "最近一日电费"},
+      "latest_month_usage": {"name": "最近结算月电量"},
+      "latest_month_charge": {"name": "最近结算月电费"},
+      "current_year_usage": {"name": "本年累计电量"},
+      "current_year_charge": {"name": "本年累计电费"}
     }
   }
 }

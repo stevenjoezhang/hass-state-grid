@@ -205,6 +205,69 @@ def test_sms_and_daily_query_transport() -> None:
     assert len(query_headers["timeStamp"]) == 23
 
 
+def test_monthly_bill_query_transport() -> None:
+    monthly_response = _response_envelope(
+        {
+            "code": 1,
+            "data": {
+                "yearPq": "636.04",
+                "yearAmt": "310.56",
+                "list": [
+                    {
+                        "ym": "202607",
+                        "monthPq": "269",
+                        "eleList": [{"pq": "269", "amt": "131.35"}],
+                    }
+                ],
+            },
+        }
+    )
+    http = FakeHttp(monthly_response)
+    api = StateGridAppApi(
+        http,
+        username="11111111111",
+        password="password",
+        profile=_profile(),
+        login_session=LoginSession(
+            token="t" * 36,
+            user_id="u" * 32,
+            expires_at=9999999999,
+            user_info={"addressProvince": "420000"},
+        ),
+    )
+    account = PowerAccount.from_api(
+        {
+            "id": "account-1",
+            "powerUserNo": "cons-no",
+            "powerUserNo_dst": "cons-no-dst",
+            "proNo": "42101",
+            "orgNo": "org",
+            "elecType": "01",
+        }
+    )
+
+    billing = asyncio.run(api.async_query_monthly_bills(account, 2026))
+
+    assert billing.year == 2026
+    assert billing.usage == 636.04
+    assert billing.charge == 310.56
+    assert billing.bills[-1].charge == 131.35
+    assert http.requests[0]["url"].endswith("/member/c51/f04")
+    assert _decrypt_request(http.requests[0]["data"]) == {
+        "serviceCode": "BCP_000026",
+        "source": "app",
+        "target": "42101",
+        "data": {
+            "year": 2026,
+            "consNo": "cons-no",
+            "provinceCode": "42101",
+            "startYm": "202601",
+            "endYm": "202612",
+            "funcCode": "ALIPAY_01",
+        },
+    }
+
+
 def test_login_business_failure_is_authentication_error() -> None:
     response = _response_envelope(
         {

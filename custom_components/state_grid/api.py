@@ -30,12 +30,14 @@ from .models import (
     DeviceProfile,
     LoginSession,
     PowerAccount,
+    YearlyBilling,
 )
 
 LOGIN_PATH = "emss-uia-center-front/member/c2/f01"
 DEVICE_SMS_PATH = "emss-uia-center-front/member/c1/f01"
 SMS_LOGIN_PATH = "emss-uia-center-front/member/c2/f02"
 DAILY_USAGE_PATH = "emss-bia-bill-front/member/c11/f01"
+MONTHLY_BILLS_PATH = "emss-bia-bill-front/member/c51/f04"
 AUTH_ERROR_CODES = {"-200", "-201"}
 DEVICE_VERIFICATION_CODE = "4006"
 INTERACTIVE_CHALLENGE_CODES = {"RK008"}
@@ -117,6 +119,23 @@ def build_daily_usage_payload(
             "srvCode": "",
             "startTime": start_date.isoformat(),
             "userName": "acctid01",
+        },
+    }
+
+
+def build_monthly_bills_payload(account: PowerAccount, year: int) -> dict[str, Any]:
+    """Build the A10071400 Monthlycharge request object."""
+    return {
+        "serviceCode": "BCP_000026",
+        "source": "app",
+        "target": account.pro_no,
+        "data": {
+            "year": year,
+            "consNo": account.cons_no,
+            "provinceCode": account.pro_no,
+            "startYm": f"{year}01",
+            "endYm": f"{year}12",
+            "funcCode": "ALIPAY_01",
         },
     }
 
@@ -559,6 +578,32 @@ class StateGridAppApi:
             total = None
         return readings, total
 
+    async def async_query_monthly_bills(
+        self, account: PowerAccount, year: int
+    ) -> YearlyBilling:
+        """Query settled monthly electricity and charge totals for one year."""
+        await self.async_ensure_login()
+        payload = build_monthly_bills_payload(account, year)
+        for attempt in range(2):
+            response = await self._post(
+                MONTHLY_BILLS_PATH,
+                payload,
+                authenticated=True,
+            )
+            try:
+                data = self._raise_for_error(response)
+                break
+            except StateGridAuthenticationError:
+                if attempt:
+                    raise
+                self.login_session = None
+                if not self.password:
+                    raise
+                await self.async_login()
+        else:  # pragma: no cover - loop always breaks or raises
+            raise RuntimeError("unreachable")
+        return YearlyBilling.from_api(data, year)
+
     async def async_query_history(
         self, *, months: int = 2, today: date | None = None
     ) -> dict[str, AccountUsage]:
@@ -583,10 +628,36 @@ class StateGridAppApi:
                 by_day.update({reading.day: reading for reading in readings})
                 if offset == 0:
                     current_total = total
+
+            current_billing: YearlyBilling | None = None
+            monthly_bills = ()
+            try:
+                current_billing = await self.async_query_monthly_bills(
+                    account, today.year
+                )
+                monthly_bills = current_billing.bills
+                if not monthly_bills:
+                    previous_billing = await self.async_query_monthly_bills(
+                        account, today.year - 1
+                    )
+                    monthly_bills = previous_billing.bills
+            except StateGridAuthenticationError:
+                raise
+            except StateGridApiError:
+                # Some regions or account types do not expose settled bills.
+                # Daily electricity remains useful, so keep those entities online.
+                pass
             result[account.account_id] = AccountUsage(
                 account=account,
                 readings=tuple(by_day[key] for key in sorted(by_day)),
                 current_month_total=current_total,
                 as_of=today,
+                monthly_bills=monthly_bills,
+                current_year_usage=(
+                    current_billing.usage if current_billing is not None else None
+                ),
+                current_year_charge=(
+                    current_billing.charge if current_billing is not None else None
+                ),
             )
         return result
