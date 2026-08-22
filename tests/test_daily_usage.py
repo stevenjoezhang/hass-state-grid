@@ -181,8 +181,6 @@ def test_daily_reading_and_month_aggregation() -> None:
     assert usage.month_sum("usage", date(2026, 8, 19)) == 3.5
     assert usage.month_sum("valley", date(2026, 8, 19)) == 0.2
     assert readings[1].valley is None
-    assert usage.latest_charge is readings[0]
-    assert usage.latest_charge.charge == 0.66
 
 
 def test_prepaid_balance_and_postpaid_amount_due_are_separate() -> None:

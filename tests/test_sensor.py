@@ -12,10 +12,6 @@ def test_historical_daily_sensors_do_not_claim_live_statistics() -> None:
     assert daily_usage.device_class is SensorDeviceClass.ENERGY
     assert daily_usage.state_class is None
 
-    daily_charge = descriptions["latest_daily_charge"]
-    assert daily_charge.device_class is SensorDeviceClass.MONETARY
-    assert daily_charge.state_class is None
-
     latest_month_usage = descriptions["latest_month_usage"]
     assert latest_month_usage.device_class is SensorDeviceClass.ENERGY
     assert latest_month_usage.state_class is None
@@ -34,6 +30,7 @@ def test_only_current_month_total_remains() -> None:
         is SensorStateClass.TOTAL_INCREASING
     )
     assert REMOVED_SENSOR_KEYS.isdisjoint(descriptions)
+    assert "latest_daily_charge" in REMOVED_SENSOR_KEYS
 
 
 def test_current_year_sensors_are_totals() -> None:

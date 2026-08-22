@@ -58,11 +58,10 @@
   },
   "entity": {
     "sensor": {
-      "latest_daily_usage": {"name": "最新日用电量"},
+      "latest_daily_usage": {"name": "上一日用电量"},
       "current_month_usage": {"name": "本月用电量"},
-      "latest_daily_charge": {"name": "上一日电费"},
-      "latest_month_usage": {"name": "最近结算月电量"},
-      "latest_month_charge": {"name": "最近结算月电费"},
+      "latest_month_usage": {"name": "上一结算月电量"},
+      "latest_month_charge": {"name": "上一结算月电费"},
       "current_year_usage": {"name": "本年累计电量"},
       "current_year_charge": {"name": "本年累计电费"},
       "account_balance": {"name": "账户余额"},

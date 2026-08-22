@@ -31,6 +31,7 @@ class StateGridSensorDescription(SensorEntityDescription):
 
 
 REMOVED_SENSOR_KEYS = {
+    "latest_daily_charge",
     "latest_daily_valley",
     "latest_daily_flat",
     "latest_daily_peak",
@@ -60,15 +61,6 @@ SENSORS = (
             usage.current_month_total
             if usage.current_month_total is not None
             else usage.month_sum("usage")
-        ),
-    ),
-    StateGridSensorDescription(
-        key="latest_daily_charge",
-        translation_key="latest_daily_charge",
-        device_class=SensorDeviceClass.MONETARY,
-        native_unit_of_measurement="CNY",
-        value_fn=lambda usage: (
-            usage.latest_charge.charge if usage.latest_charge else None
         ),
     ),
     StateGridSensorDescription(
@@ -203,17 +195,10 @@ class StateGridElectricitySensor(
             "account_suffix": account.cons_no_src[-4:],
             "address": account.address,
         }
-        if self.entity_description.key == "latest_daily_charge":
-            attributes["latest_date"] = (
-                self.usage.latest_charge.day.isoformat()
-                if self.usage.latest_charge
-                else None
-            )
-        elif self.entity_description.key.startswith("latest_daily_"):
+        if self.entity_description.key == "latest_daily_usage":
             attributes["latest_date"] = (
                 self.usage.latest.day.isoformat() if self.usage.latest else None
             )
-        if self.entity_description.key == "latest_daily_usage":
             attributes["daily_history"] = [
                 reading.as_dict() for reading in self.usage.readings
             ]

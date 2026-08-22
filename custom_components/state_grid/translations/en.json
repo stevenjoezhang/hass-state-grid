@@ -58,11 +58,10 @@
   },
   "entity": {
     "sensor": {
-      "latest_daily_usage": {"name": "Latest daily usage"},
+      "latest_daily_usage": {"name": "Previous daily usage"},
       "current_month_usage": {"name": "Current month usage"},
-      "latest_daily_charge": {"name": "Previous available daily charge"},
-      "latest_month_usage": {"name": "Latest settled month usage"},
-      "latest_month_charge": {"name": "Latest settled month charge"},
+      "latest_month_usage": {"name": "Previous settled month usage"},
+      "latest_month_charge": {"name": "Previous settled month charge"},
       "current_year_usage": {"name": "Current year usage"},
       "current_year_charge": {"name": "Current year charge"},
       "account_balance": {"name": "Account balance"},

@@ -406,17 +406,6 @@ class AccountUsage:
     def latest_bill(self) -> MonthlyBill | None:
         return self.monthly_bills[-1] if self.monthly_bills else None
 
-    @property
-    def latest_charge(self) -> DailyReading | None:
-        return next(
-            (
-                reading
-                for reading in reversed(self.readings)
-                if reading.charge is not None
-            ),
-            None,
-        )
-
     def month_sum(self, field_name: str, today: date | None = None) -> float | None:
         today = today or self.as_of
         values = [
