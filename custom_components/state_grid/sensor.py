@@ -55,7 +55,7 @@ SENSORS = (
         translation_key="current_month_usage",
         device_class=SensorDeviceClass.ENERGY,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        state_class=SensorStateClass.TOTAL,
+        state_class=SensorStateClass.TOTAL_INCREASING,
         value_fn=lambda usage: (
             usage.current_month_total
             if usage.current_month_total is not None
@@ -90,7 +90,7 @@ SENSORS = (
         translation_key="current_year_usage",
         device_class=SensorDeviceClass.ENERGY,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        state_class=SensorStateClass.TOTAL,
+        state_class=SensorStateClass.TOTAL_INCREASING,
         value_fn=lambda usage: usage.current_year_usage,
     ),
     StateGridSensorDescription(

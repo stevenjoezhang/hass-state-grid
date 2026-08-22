@@ -29,7 +29,10 @@ def test_only_current_month_total_remains() -> None:
     descriptions = {description.key: description for description in SENSORS}
 
     assert descriptions["current_month_usage"].device_class is SensorDeviceClass.ENERGY
-    assert descriptions["current_month_usage"].state_class is SensorStateClass.TOTAL
+    assert (
+        descriptions["current_month_usage"].state_class
+        is SensorStateClass.TOTAL_INCREASING
+    )
     assert REMOVED_SENSOR_KEYS.isdisjoint(descriptions)
 
 
@@ -37,7 +40,10 @@ def test_current_year_sensors_are_totals() -> None:
     descriptions = {description.key: description for description in SENSORS}
 
     assert descriptions["current_year_usage"].device_class is SensorDeviceClass.ENERGY
-    assert descriptions["current_year_usage"].state_class is SensorStateClass.TOTAL
+    assert (
+        descriptions["current_year_usage"].state_class
+        is SensorStateClass.TOTAL_INCREASING
+    )
     assert (
         descriptions["current_year_charge"].device_class is SensorDeviceClass.MONETARY
     )
