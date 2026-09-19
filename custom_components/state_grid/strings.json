@@ -19,7 +19,7 @@
       },
       "reauth_confirm": {
         "title": "完成安全验证",
-        "description": "自动密码登录需要额外认证。继续后将再次尝试密码登录；仅当服务端要求时才发送短信。",
+        "description": "自动登录未能完成。上次错误：{auth_error}\n\n点击继续可使用保存的账号和原设备身份重新登录，无需删除集成；仅当服务端要求新设备验证时才发送短信。RK008 表示安全校验未通过，重试不保证成功。",
         "data": {
           "continue": "继续"
         }
@@ -36,7 +36,7 @@
       "cannot_connect": "无法连接国家电网网关（{error_code}）：{error_message}",
       "invalid_auth": "登录失败（{error_code}）：{error_message}",
       "cannot_send_verification_code": "无法发送新设备验证码（{error_code}）：{error_message}",
-      "interactive_challenge_unsupported": "服务端要求当前集成无法完成的交互式验证（{error_code}）：{error_message}",
+      "interactive_challenge_unsupported": "服务端安全校验未通过，可能需要额外验证（{error_code}）：{error_message}",
       "invalid_verification_code": "设备验证码验证失败（{error_code}）：{error_message}",
       "server_error": "国家电网上游返回错误 [{error_source}] {error_code}：{error_message}",
       "local_error": "本地请求构造失败（{error_type}）：{error_message}",

@@ -7,6 +7,7 @@ PLATFORMS = ["sensor"]
 
 CONF_DEVICE_PROFILE = "device_profile"
 CONF_LOGIN_SESSION = "login_session"
+CONF_AUTH_ERROR = "auth_error"
 CONF_SYNTHETIC_DEVICE = "synthetic_device"
 CONF_HISTORY_MONTHS = "history_months"
 CONF_UPDATE_INTERVAL_HOURS = "update_interval_hours"

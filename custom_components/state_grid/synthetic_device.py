@@ -66,7 +66,8 @@ def _cached_token(
     if int(cache.get("schema_version", 0)) != TOKEN_SCHEMA_VERSION:
         return None
     timestamp_ms = int(cache.get("timestamp_ms", 0))
-    if int(time.time() * 1000) > timestamp_ms + TOKEN_CACHE_MS:
+    age_ms = int(time.time() * 1000) - timestamp_ms
+    if not 0 <= age_ms <= TOKEN_CACHE_MS:
         return None
     if cache.get("profile_id") != profile.identity().profile_id:
         return None

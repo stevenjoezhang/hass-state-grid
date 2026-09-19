@@ -16,11 +16,10 @@ from .api import (
     StateGridApiError,
     StateGridAppApi,
     StateGridAuthenticationError,
-    StateGridDeviceVerificationRequired,
-    StateGridInteractiveChallengeRequired,
     StateGridNetworkError,
 )
 from .const import (
+    CONF_AUTH_ERROR,
     CONF_HISTORY_MONTHS,
     CONF_LOGIN_SESSION,
     CONF_UPDATE_INTERVAL_HOURS,
@@ -33,6 +32,19 @@ from .models import AccountUsage
 _LOGGER = logging.getLogger(__name__)
 
 
+def _auth_error_message(error: StateGridAuthenticationError) -> str:
+    """Keep the upstream errors that led to a failed automatic login."""
+    chain: list[str] = []
+    seen: set[int] = set()
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, StateGridApiError):
+            chain.append(f"[{current.source} {current.code}] {current.message}")
+        current = current.__cause__
+    return " → ".join(reversed(chain))
+
+
 class StateGridDataCoordinator(DataUpdateCoordinator[dict[str, AccountUsage]]):
     """Refresh all power accounts while sharing one App login session."""
 
@@ -41,6 +53,7 @@ class StateGridDataCoordinator(DataUpdateCoordinator[dict[str, AccountUsage]]):
     ) -> None:
         self.entry = entry
         self.api = api
+        self.configured_options = dict(entry.options)
         hours = int(
             entry.options.get(CONF_UPDATE_INTERVAL_HOURS, DEFAULT_UPDATE_INTERVAL_HOURS)
         )
@@ -55,25 +68,34 @@ class StateGridDataCoordinator(DataUpdateCoordinator[dict[str, AccountUsage]]):
         months = int(
             self.entry.options.get(CONF_HISTORY_MONTHS, DEFAULT_HISTORY_MONTHS)
         )
-        old_session = self.entry.data.get(CONF_LOGIN_SESSION)
+        auth_error: str | None = None
+        succeeded = False
         try:
             result = await self.api.async_query_history(months=months)
-        except StateGridDeviceVerificationRequired as error:
-            raise ConfigEntryAuthFailed("device_verification_required") from error
-        except StateGridInteractiveChallengeRequired as error:
-            raise ConfigEntryAuthFailed("interactive_challenge_required") from error
         except StateGridAuthenticationError as error:
-            raise ConfigEntryAuthFailed("invalid_auth") from error
+            auth_error = _auth_error_message(error)
+            raise ConfigEntryAuthFailed(auth_error) from error
         except (StateGridNetworkError, StateGridApiError) as error:
             raise UpdateFailed(str(error)) from error
-        if self.api.login_session is not None:
-            new_session = self.api.login_session.as_dict()
-            if new_session != old_session:
+        else:
+            succeeded = True
+            return result
+        finally:
+            # Login can succeed before an electricity query fails. Persist the
+            # new session, or an invalidation, independently of query success.
+            data = dict(self.entry.data)
+            if self.api.login_session is None:
+                data.pop(CONF_LOGIN_SESSION, None)
+            else:
+                data[CONF_LOGIN_SESSION] = self.api.login_session.as_dict()
+            if succeeded:
+                data.pop(CONF_AUTH_ERROR, None)
+            elif auth_error is not None:
+                data[CONF_AUTH_ERROR] = auth_error
+            if data != self.entry.data:
                 self.hass.config_entries.async_update_entry(
-                    self.entry,
-                    data={**self.entry.data, CONF_LOGIN_SESSION: new_session},
+                    self.entry, data=data
                 )
-        return result
 
 
 @dataclass

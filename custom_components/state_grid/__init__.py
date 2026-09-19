@@ -17,26 +17,32 @@ from .const import (
     PLATFORMS,
 )
 from .coordinator import StateGridDataCoordinator, StateGridRuntimeData
-from .models import LoginSession
+from .models import DeviceProfile, LoginSession
 from .synthetic_device import build_device_profile
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up one 国家电网 account."""
-    profile, updated_state = await hass.async_add_executor_job(
-        partial(build_device_profile, entry.data[CONF_SYNTHETIC_DEVICE])
-    )
-    if updated_state != entry.data[CONF_SYNTHETIC_DEVICE]:
-        hass.config_entries.async_update_entry(
-            entry,
-            data={**entry.data, CONF_SYNTHETIC_DEVICE: updated_state},
+
+    async def async_profile_provider() -> DeviceProfile:
+        profile, updated_state = await hass.async_add_executor_job(
+            partial(build_device_profile, entry.data[CONF_SYNTHETIC_DEVICE])
         )
+        if updated_state != entry.data[CONF_SYNTHETIC_DEVICE]:
+            hass.config_entries.async_update_entry(
+                entry,
+                data={**entry.data, CONF_SYNTHETIC_DEVICE: updated_state},
+            )
+        return profile
+
+    profile = await async_profile_provider()
     api = StateGridAppApi(
         async_get_clientsession(hass),
         username=entry.data[CONF_USERNAME],
         password=str(entry.data.get(CONF_PASSWORD, "")),
         profile=profile,
         login_session=LoginSession.from_dict(entry.data.get(CONF_LOGIN_SESSION)),
+        profile_provider=async_profile_provider,
     )
     coordinator = StateGridDataCoordinator(hass, entry, api)
     await coordinator.async_config_entry_first_refresh()
@@ -73,5 +79,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload after an options update."""
+    """Reload for options changes, not routine session/cache persistence."""
+    runtime = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    if runtime is None or runtime.coordinator.configured_options == entry.options:
+        return
+    runtime.coordinator.configured_options = dict(entry.options)
     await hass.config_entries.async_reload(entry.entry_id)

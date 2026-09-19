@@ -7,7 +7,7 @@ import calendar
 import json
 import secrets
 import time
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import date, datetime
 from typing import Any
 from urllib.parse import urljoin
@@ -77,7 +77,7 @@ class StateGridDeviceVerificationRequired(StateGridAuthenticationError):
 
 
 class StateGridInteractiveChallengeRequired(StateGridAuthenticationError):
-    """The server requires a browser or App-based interactive challenge."""
+    """The server rejected a security check that may require user interaction."""
 
 
 def _app_guid_new() -> str:
@@ -288,12 +288,15 @@ class StateGridAppApi:
         password: str,
         profile: DeviceProfile,
         login_session: LoginSession | None = None,
+        profile_provider: Callable[[], Awaitable[DeviceProfile]] | None = None,
     ) -> None:
         self.http = http
         self.username = username
         self.password = password
         self.profile = profile
         self.login_session = login_session
+        self._profile_provider = profile_provider
+        self._profile_lock = asyncio.Lock()
         self._login_lock = asyncio.Lock()
         self._meter_cache: dict[tuple[str, date], MeterReading] = {}
 
@@ -330,8 +333,9 @@ class StateGridAppApi:
         *,
         login_params: Mapping[str, Any] | None = None,
         authenticated: bool,
+        request_session: LoginSession | None = None,
     ) -> dict[str, str]:
-        current = self.login_session if authenticated else None
+        current = request_session if authenticated else None
         headers = {
             "Content-Type": "application/json; charset=UTF-8",
             "timeStamp": (
@@ -367,7 +371,17 @@ class StateGridAppApi:
         *,
         authenticated: bool,
         login_params: Mapping[str, Any] | None = None,
+        request_session: LoginSession | None = None,
     ) -> dict[str, Any]:
+        # Capture before awaiting the provider, so a concurrent login cannot
+        # change which token this request sends and subsequently invalidates.
+        if authenticated and request_session is None:
+            request_session = self.login_session
+        # The App checks its four-hour Turing cache on every HTTP request.
+        # Keep the stable device identity, refreshing only the cached token.
+        if self._profile_provider is not None:
+            async with self._profile_lock:
+                self.profile = await self._profile_provider()
         envelope = build_request_envelope(payload, self.profile.server_public_key)
         url = urljoin(self.profile.base_url.rstrip("/") + "/", path)
         try:
@@ -375,7 +389,9 @@ class StateGridAppApi:
                 url,
                 data=json.dumps(envelope, ensure_ascii=False, separators=(",", ":")),
                 headers=self._headers(
-                    login_params=login_params, authenticated=authenticated
+                    login_params=login_params,
+                    authenticated=authenticated,
+                    request_session=request_session,
                 ),
                 timeout=ClientTimeout(total=30),
             ) as response:
@@ -441,6 +457,15 @@ class StateGridAppApi:
         self, *, verification_code: str = "", code_key: str = ""
     ) -> LoginSession:
         """Password login, optionally retrying with one-shot device SMS data."""
+        async with self._login_lock:
+            return await self._async_password_login(
+                verification_code=verification_code, code_key=code_key
+            )
+
+    async def _async_password_login(
+        self, *, verification_code: str = "", code_key: str = ""
+    ) -> LoginSession:
+        """Log in while the caller holds the login lock."""
         if bool(verification_code) != bool(code_key):
             raise ValueError("verification_code and code_key must be provided together")
         if verification_code and (
@@ -456,52 +481,30 @@ class StateGridAppApi:
             }
         )
         params = build_password_login_map(self.username, self.password, context=context)
-        async with self._login_lock:
-            response = await self._post(
-                LOGIN_PATH,
-                params,
-                authenticated=False,
-                login_params=params,
+        self.login_session = None
+        response = await self._post(
+            LOGIN_PATH,
+            params,
+            authenticated=False,
+            login_params=params,
+        )
+        try:
+            data = self._raise_for_error(response)
+        except (
+            StateGridDeviceVerificationRequired,
+            StateGridInteractiveChallengeRequired,
+        ):
+            raise
+        except StateGridApiError as error:
+            raise StateGridAuthenticationError(
+                error.code, error.message, source=error.source
+            ) from error
+        bizrt = data.get("bizrt")
+        if not isinstance(bizrt, Mapping) or not bizrt.get("token"):
+            raise StateGridAuthenticationError(
+                "invalid_auth", "login returned no token"
             )
-            try:
-                data = self._raise_for_error(response)
-            except (
-                StateGridDeviceVerificationRequired,
-                StateGridInteractiveChallengeRequired,
-            ):
-                raise
-            except StateGridApiError as error:
-                raise StateGridAuthenticationError(
-                    error.code, error.message, source=error.source
-                ) from error
-            bizrt = data.get("bizrt")
-            if not isinstance(bizrt, Mapping) or not bizrt.get("token"):
-                raise StateGridAuthenticationError(
-                    "invalid_auth", "login returned no token"
-                )
-            raw_user_info = bizrt.get("userInfo")
-            if isinstance(raw_user_info, list):
-                user_info = next(
-                    (dict(item) for item in raw_user_info if isinstance(item, Mapping)),
-                    {},
-                )
-            elif isinstance(raw_user_info, Mapping):
-                user_info = dict(raw_user_info)
-            else:
-                user_info = {}
-            user_info = _minimize_user_info(user_info)
-            user_id = str(user_info.get("userId") or bizrt.get("userId") or "0")
-            try:
-                lifetime = int(bizrt.get("tokenExpireTime") or 1296000)
-            except (TypeError, ValueError):
-                lifetime = 1296000
-            self.login_session = LoginSession(
-                token=str(bizrt["token"]),
-                user_id=user_id,
-                expires_at=time.time() + max(300, lifetime),
-                user_info=user_info,
-            )
-            return self.login_session
+        return self._save_login_session(bizrt)
 
     def _save_login_session(self, bizrt: Mapping[str, Any]) -> LoginSession:
         raw_user_info = bizrt.get("userInfo")
@@ -587,13 +590,15 @@ class StateGridAppApi:
         return code_key
 
     async def async_ensure_login(self) -> LoginSession:
-        if self.login_session and self.login_session.expires_at > time.time() + 300:
-            return self.login_session
-        if not self.password:
-            raise StateGridAuthenticationError(
-                "saved_password_required", "a saved password is required"
-            )
-        return await self.async_login()
+        async with self._login_lock:
+            if self.login_session and self.login_session.expires_at > time.time() + 300:
+                return self.login_session
+            self.login_session = None
+            if not self.password:
+                raise StateGridAuthenticationError(
+                    "saved_password_required", "a saved password is required"
+                )
+            return await self._async_password_login()
 
     async def _async_authenticated_data(
         self, path: str, payload: Mapping[str, Any]
@@ -601,16 +606,24 @@ class StateGridAppApi:
         """Post one authenticated request and retry once after token renewal."""
         await self.async_ensure_login()
         for attempt in range(2):
-            response = await self._post(path, payload, authenticated=True)
+            request_session = self.login_session
+            response = await self._post(
+                path, payload, authenticated=True, request_session=request_session
+            )
             try:
                 return self._raise_for_error(response)
-            except StateGridAuthenticationError:
-                if attempt:
+            except StateGridAuthenticationError as error:
+                # A challenge is not an expired token; preserve it for reauth.
+                if error.code not in AUTH_ERROR_CODES:
                     raise
-                self.login_session = None
-                if not self.password:
+                if self.login_session is request_session:
+                    self.login_session = None
+                if attempt or not self.password:
                     raise
-                await self.async_login()
+                try:
+                    await self.async_ensure_login()
+                except StateGridError as login_error:
+                    raise login_error from error
         raise RuntimeError("unreachable")  # pragma: no cover
 
     @staticmethod

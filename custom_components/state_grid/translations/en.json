@@ -17,7 +17,7 @@
       },
       "reauth_confirm": {
         "title": "Complete security verification",
-        "description": "Automatic password login needs additional authentication. Continue to retry; an SMS is sent only when requested by the server.",
+        "description": "Automatic login failed. Previous error: {auth_error}\n\nContinue to retry with the saved credentials and existing device identity. You do not need to delete the integration. An SMS is sent only when the server requires new-device verification. RK008 indicates a failed security check; retrying may not resolve it.",
         "data": {
           "continue": "Continue"
         }
@@ -34,7 +34,7 @@
       "cannot_connect": "Cannot connect to the State Grid gateway ({error_code}): {error_message}",
       "invalid_auth": "Login failed ({error_code}): {error_message}",
       "cannot_send_verification_code": "Unable to send the new-device verification code ({error_code}): {error_message}",
-      "interactive_challenge_unsupported": "The server requires an unsupported interactive challenge ({error_code}): {error_message}",
+      "interactive_challenge_unsupported": "The server security check failed and may require additional verification ({error_code}): {error_message}",
       "invalid_verification_code": "Device verification failed ({error_code}): {error_message}",
       "server_error": "State Grid upstream error [{error_source}] {error_code}: {error_message}",
       "local_error": "Local request construction failed ({error_type}): {error_message}",
