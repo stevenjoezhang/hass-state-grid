@@ -112,7 +112,9 @@ def build_daily_usage_payload(
         "data": {
             "acctId": "acctid01",
             "channelCode": "SGAPP",
-            "consNo": account.cons_no,
+            # The history endpoints expect the source account number.  The
+            # encrypted variant is rejected with ``code: 0`` / ``consNo:null``.
+            "consNo": account.cons_no_src,
             "consNosrc": account.cons_no_src,
             "endTime": end_date.isoformat(),
             "consType": account.cons_type,
@@ -137,7 +139,7 @@ def build_monthly_bills_payload(account: PowerAccount, year: int) -> dict[str, A
         "target": account.pro_no,
         "data": {
             "year": year,
-            "consNo": account.cons_no,
+            "consNo": account.cons_no_src,
             "provinceCode": account.pro_no,
             "startYm": f"{year}01",
             "endYm": f"{year}12",
@@ -445,7 +447,7 @@ class StateGridAppApi:
             raise StateGridAuthenticationError(code, message, source=source)
         if srv_code and srv_code != "0000":
             raise StateGridApiError(srv_code, message, source="srvrt")
-        if top_code not in {"", "0", "1"}:
+        if top_code not in {"", "1"}:
             raise StateGridApiError(
                 top_code,
                 message or str(response.get("message", "")),
