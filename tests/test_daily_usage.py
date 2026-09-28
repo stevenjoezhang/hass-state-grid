@@ -4,6 +4,7 @@ import pytest
 
 from custom_components.state_grid.api import (
     StateGridAppApi,
+    StateGridApiError,
     StateGridDeviceVerificationRequired,
     StateGridInteractiveChallengeRequired,
     build_account_balance_payload,
@@ -40,7 +41,7 @@ def test_daily_payload_matches_recovered_micro_app_map() -> None:
     assert payload["serviceCode"] == "BCP_000026"
     assert payload["source"] == "app"
     assert payload["data"]["channelCode"] == "SGAPP"
-    assert payload["data"]["consNo"] == "raw-cons-no"
+    assert payload["data"]["consNo"] == "masked-cons-no"
     assert payload["data"]["consNosrc"] == "masked-cons-no"
     assert payload["data"]["funcCode"] == "ALIPAY_01"
     assert payload["data"]["startTime"] == "2026-08-01"
@@ -64,7 +65,7 @@ def test_monthly_payload_matches_recovered_micro_app_map() -> None:
         "target": "42101",
         "data": {
             "year": 2026,
-            "consNo": "raw-cons-no",
+            "consNo": "masked-cons-no",
             "provinceCode": "42101",
             "startYm": "202601",
             "endYm": "202612",
@@ -231,3 +232,17 @@ def test_rk008_is_interactive_challenge_not_bad_password() -> None:
     assert caught.value.source == "srvrt"
     assert caught.value.code == "RK008"
     assert caught.value.message == "interactive challenge required"
+
+
+def test_gateway_code_zero_is_not_treated_as_success() -> None:
+    with pytest.raises(StateGridApiError) as caught:
+        StateGridAppApi._raise_for_error(
+            {
+                "code": 0,
+                "message": "field consNo:null, parameter validation failed",
+            }
+        )
+
+    assert caught.value.source == "gateway"
+    assert caught.value.code == "0"
+    assert caught.value.message == "field consNo:null, parameter validation failed"

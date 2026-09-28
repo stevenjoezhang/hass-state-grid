@@ -204,6 +204,9 @@ def test_sms_and_daily_query_transport() -> None:
     assert query_headers["t"] == "t" * 36
     assert query_headers["userid"] == "u" * 32
     assert len(query_headers["timeStamp"]) == 23
+    daily_plain = _decrypt_request(http.requests[1]["data"])
+    assert daily_plain["data"]["consNo"] == "cons-no-dst"
+    assert daily_plain["data"]["consNosrc"] == "cons-no-dst"
 
 
 def test_monthly_bill_query_transport() -> None:
@@ -260,7 +263,7 @@ def test_monthly_bill_query_transport() -> None:
         "target": "42101",
         "data": {
             "year": 2026,
-            "consNo": "cons-no",
+            "consNo": "cons-no-dst",
             "provinceCode": "42101",
             "startYm": "202601",
             "endYm": "202612",
