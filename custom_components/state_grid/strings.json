@@ -61,13 +61,23 @@
   "entity": {
     "sensor": {
       "latest_daily_usage": {"name": "上一日用电量"},
+      "latest_daily_valley": {"name": "上一日谷电量"},
+      "latest_daily_flat": {"name": "上一日平电量"},
+      "latest_daily_peak": {"name": "上一日峰电量"},
+      "latest_daily_tip": {"name": "上一日尖电量"},
       "current_month_usage": {"name": "本月用电量"},
+      "current_month_valley": {"name": "本月谷电量"},
+      "current_month_flat": {"name": "本月平电量"},
+      "current_month_peak": {"name": "本月峰电量"},
+      "current_month_tip": {"name": "本月尖电量"},
+      "current_month_valley_share": {"name": "本月谷电占比"},
       "latest_month_usage": {"name": "上一结算月电量"},
       "latest_month_charge": {"name": "上一结算月电费"},
       "current_year_usage": {"name": "本年累计电量"},
       "current_year_charge": {"name": "本年累计电费"},
       "account_balance": {"name": "账户余额"},
       "amount_due": {"name": "应交金额"},
+      "history_owe": {"name": "历史欠费"},
       "latest_month_meter_reading": {"name": "上月抄表读数"}
     }
   }

@@ -3,8 +3,8 @@ from datetime import date
 import pytest
 
 from custom_components.state_grid.api import (
-    StateGridAppApi,
     StateGridApiError,
+    StateGridAppApi,
     StateGridDeviceVerificationRequired,
     StateGridInteractiveChallengeRequired,
     build_account_balance_payload,
@@ -182,6 +182,26 @@ def test_daily_reading_and_month_aggregation() -> None:
     assert usage.month_sum("usage", date(2026, 8, 19)) == 3.5
     assert usage.month_sum("valley", date(2026, 8, 19)) == 0.2
     assert readings[1].valley is None
+
+
+def test_month_valley_share_uses_daily_readings() -> None:
+    readings = tuple(
+        DailyReading.from_api(item)
+        for item in (
+            {"day": "20260801", "dayElePq": "10", "thisVPq": "4"},
+            {"day": "20260802", "dayElePq": "10", "thisVPq": "6"},
+        )
+    )
+    usage = AccountUsage(_account(), readings, None, as_of=date(2026, 8, 19))
+    assert usage.month_valley_share == 50.0
+
+    without_valley = AccountUsage(
+        _account(),
+        (DailyReading.from_api({"day": "20260801", "dayElePq": "10"}),),
+        None,
+        as_of=date(2026, 8, 19),
+    )
+    assert without_valley.month_valley_share is None
 
 
 def test_prepaid_balance_and_postpaid_amount_due_are_separate() -> None:
