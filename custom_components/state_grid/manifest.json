@@ -8,8 +8,7 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/stevenjoezhang/hass-state-grid/issues",
   "requirements": [
-    "gmssl==3.2.2",
-    "cryptography>=42.0.0"
+    "gmssl==3.2.2"
   ],
   "version": "0.10.0"
 }
