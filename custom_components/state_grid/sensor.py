@@ -13,7 +13,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfEnergy
+from homeassistant.const import PERCENTAGE, UnitOfEnergy
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -31,15 +31,9 @@ class StateGridSensorDescription(SensorEntityDescription):
 
 
 REMOVED_SENSOR_KEYS = {
+    # The daily charge field is null for almost every region, so the entity is
+    # deleted instead of being offered as an opt-in sensor.
     "latest_daily_charge",
-    "latest_daily_valley",
-    "latest_daily_flat",
-    "latest_daily_peak",
-    "latest_daily_tip",
-    "current_month_valley",
-    "current_month_flat",
-    "current_month_peak",
-    "current_month_tip",
 }
 
 
@@ -52,6 +46,38 @@ SENSORS = (
         value_fn=lambda usage: usage.latest.usage if usage.latest else None,
     ),
     StateGridSensorDescription(
+        key="latest_daily_valley",
+        translation_key="latest_daily_valley",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        entity_registry_enabled_default=False,
+        value_fn=lambda usage: usage.latest.valley if usage.latest else None,
+    ),
+    StateGridSensorDescription(
+        key="latest_daily_flat",
+        translation_key="latest_daily_flat",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        entity_registry_enabled_default=False,
+        value_fn=lambda usage: usage.latest.flat if usage.latest else None,
+    ),
+    StateGridSensorDescription(
+        key="latest_daily_peak",
+        translation_key="latest_daily_peak",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        entity_registry_enabled_default=False,
+        value_fn=lambda usage: usage.latest.peak if usage.latest else None,
+    ),
+    StateGridSensorDescription(
+        key="latest_daily_tip",
+        translation_key="latest_daily_tip",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        entity_registry_enabled_default=False,
+        value_fn=lambda usage: usage.latest.tip if usage.latest else None,
+    ),
+    StateGridSensorDescription(
         key="current_month_usage",
         translation_key="current_month_usage",
         device_class=SensorDeviceClass.ENERGY,
@@ -62,6 +88,50 @@ SENSORS = (
             if usage.current_month_total is not None
             else usage.month_sum("usage")
         ),
+    ),
+    StateGridSensorDescription(
+        key="current_month_valley",
+        translation_key="current_month_valley",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        entity_registry_enabled_default=False,
+        value_fn=lambda usage: usage.month_sum("valley"),
+    ),
+    StateGridSensorDescription(
+        key="current_month_flat",
+        translation_key="current_month_flat",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        entity_registry_enabled_default=False,
+        value_fn=lambda usage: usage.month_sum("flat"),
+    ),
+    StateGridSensorDescription(
+        key="current_month_peak",
+        translation_key="current_month_peak",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        entity_registry_enabled_default=False,
+        value_fn=lambda usage: usage.month_sum("peak"),
+    ),
+    StateGridSensorDescription(
+        key="current_month_tip",
+        translation_key="current_month_tip",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        entity_registry_enabled_default=False,
+        value_fn=lambda usage: usage.month_sum("tip"),
+    ),
+    StateGridSensorDescription(
+        key="current_month_valley_share",
+        translation_key="current_month_valley_share",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+        value_fn=lambda usage: usage.month_valley_share,
     ),
     StateGridSensorDescription(
         key="latest_month_usage",
@@ -109,6 +179,16 @@ SENSORS = (
         native_unit_of_measurement="CNY",
         value_fn=lambda usage: (
             usage.billing_account.amount_due if usage.billing_account else None
+        ),
+    ),
+    StateGridSensorDescription(
+        key="history_owe",
+        translation_key="history_owe",
+        device_class=SensorDeviceClass.MONETARY,
+        native_unit_of_measurement="CNY",
+        entity_registry_enabled_default=False,
+        value_fn=lambda usage: (
+            usage.billing_account.history_owe if usage.billing_account else None
         ),
     ),
     StateGridSensorDescription(
@@ -195,10 +275,11 @@ class StateGridElectricitySensor(
             "account_suffix": account.cons_no_src[-4:],
             "address": account.address,
         }
-        if self.entity_description.key == "latest_daily_usage":
+        if self.entity_description.key.startswith("latest_daily_"):
             attributes["latest_date"] = (
                 self.usage.latest.day.isoformat() if self.usage.latest else None
             )
+        if self.entity_description.key == "latest_daily_usage":
             attributes["daily_history"] = [
                 reading.as_dict() for reading in self.usage.readings
             ]
@@ -220,7 +301,11 @@ class StateGridElectricitySensor(
             "current_year_charge",
         }:
             attributes["billing_year"] = self.usage.as_of.year
-        if self.entity_description.key in {"account_balance", "amount_due"}:
+        if self.entity_description.key in {
+            "account_balance",
+            "amount_due",
+            "history_owe",
+        }:
             balance = self.usage.billing_account
             attributes["account_type"] = (
                 None
@@ -232,6 +317,11 @@ class StateGridElectricitySensor(
             attributes["balance_date"] = balance.date if balance else None
             attributes["history_owe"] = balance.history_owe if balance else None
             attributes["penalty"] = balance.penalty if balance else None
+        if self.entity_description.key == "current_month_valley_share":
+            attributes["valley_usage"] = self.usage.month_sum("valley")
+            attributes["month_usage"] = (
+                self.usage.month_sum("usage") or self.usage.current_month_total
+            )
         if self.entity_description.key == "latest_month_meter_reading":
             meter = self.usage.latest_month_meter
             attributes["reading_date"] = meter.day.isoformat() if meter else None

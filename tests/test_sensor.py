@@ -21,7 +21,7 @@ def test_historical_daily_sensors_do_not_claim_live_statistics() -> None:
     assert latest_month_charge.state_class is None
 
 
-def test_only_current_month_total_remains() -> None:
+def test_time_of_use_sensors_are_opt_in() -> None:
     descriptions = {description.key: description for description in SENSORS}
 
     assert descriptions["current_month_usage"].device_class is SensorDeviceClass.ENERGY
@@ -31,6 +31,31 @@ def test_only_current_month_total_remains() -> None:
     )
     assert REMOVED_SENSOR_KEYS.isdisjoint(descriptions)
     assert "latest_daily_charge" in REMOVED_SENSOR_KEYS
+
+    for key in (
+        "latest_daily_valley",
+        "latest_daily_flat",
+        "latest_daily_peak",
+        "latest_daily_tip",
+        "current_month_valley",
+        "current_month_flat",
+        "current_month_peak",
+        "current_month_tip",
+        "current_month_valley_share",
+        "history_owe",
+    ):
+        assert descriptions[key].entity_registry_enabled_default is False
+
+    assert descriptions["latest_daily_valley"].state_class is None
+    assert (
+        descriptions["current_month_valley"].state_class
+        is SensorStateClass.TOTAL_INCREASING
+    )
+    assert descriptions["current_month_valley_share"].state_class is (
+        SensorStateClass.MEASUREMENT
+    )
+    assert descriptions["history_owe"].device_class is SensorDeviceClass.MONETARY
+    assert descriptions["history_owe"].state_class is None
 
 
 def test_current_year_sensors_are_totals() -> None:

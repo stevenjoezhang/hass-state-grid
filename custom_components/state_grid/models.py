@@ -416,3 +416,14 @@ class AccountUsage:
             and getattr(reading, field_name) is not None
         ]
         return round(sum(values), 6) if values else None
+
+    @property
+    def month_valley_share(self) -> float | None:
+        """Valley-period share of this month's energy, in percent."""
+        valley = self.month_sum("valley")
+        total = self.month_sum("usage")
+        if total is None:
+            total = self.current_month_total
+        if valley is None or not total:
+            return None
+        return round(valley / total * 100, 1)
