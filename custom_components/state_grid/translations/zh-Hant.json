@@ -1,0 +1,72 @@
+{
+  "title": "國家電網",
+  "config": {
+    "step": {
+      "user": {
+        "title": "登入國家電網",
+        "description": "請輸入網上國網的使用者名稱與密碼。預設使用密碼登入；只有在伺服器要求新裝置驗證時，才會發送簡訊。",
+        "data": {
+          "username": "手機號碼",
+          "password": "密碼"
+        }
+      },
+      "device_verification": {
+        "title": "新裝置驗證",
+        "description": "伺服器要求進行新裝置驗證。驗證碼已發送至尾號為 {phone_suffix} 的手機。",
+        "data": {"verification_code": "6 位數簡訊驗證碼"}
+      },
+      "reauth_confirm": {
+        "title": "完成安全驗證",
+        "description": "自動登入失敗。先前的錯誤：{auth_error}\n\n點選「繼續」即可使用已儲存的憑證與現有的裝置身分重試，不需要刪除整合。只有在伺服器要求新裝置驗證時，才會發送簡訊。RK008 表示安全檢查未通過，重試不一定能解決。",
+        "data": {
+          "continue": "繼續"
+        }
+      },
+      "reauth_credentials": {
+        "title": "更新密碼",
+        "description": "已儲存的密碼已不再被接受。請輸入目前的網上國網密碼。",
+        "data": {
+          "password": "密碼"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "無法連線至國家電網閘道（{error_code}）：{error_message}",
+      "invalid_auth": "登入失敗（{error_code}）：{error_message}",
+      "cannot_send_verification_code": "無法發送新裝置驗證碼（{error_code}）：{error_message}",
+      "interactive_challenge_unsupported": "伺服器安全檢查未通過，可能需要額外驗證（{error_code}）：{error_message}",
+      "invalid_verification_code": "裝置驗證失敗（{error_code}）：{error_message}",
+      "server_error": "國家電網上游錯誤 [{error_source}] {error_code}：{error_message}",
+      "local_error": "本機請求建構失敗（{error_type}）：{error_message}",
+      "unknown": "發生未預期的錯誤（{error_type}）：{error_message}"
+    },
+    "abort": {
+      "already_configured": "此國家電網帳號已完成設定",
+      "wrong_account": "目前登入的帳號與此項目不符"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "國家電網查詢設定",
+        "data": {
+          "history_months": "歷史月數（1-3）",
+          "update_interval_hours": "更新間隔（6-24 小時）"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "latest_daily_usage": {"name": "前一日用電量"},
+      "current_month_usage": {"name": "本月用電量"},
+      "latest_month_usage": {"name": "前一個結算月用電量"},
+      "latest_month_charge": {"name": "前一個結算月電費"},
+      "current_year_usage": {"name": "本年度用電量"},
+      "current_year_charge": {"name": "本年度電費"},
+      "account_balance": {"name": "帳戶餘額"},
+      "amount_due": {"name": "應繳金額"},
+      "latest_month_meter_reading": {"name": "上月電表讀數"}
+    }
+  }
+}
